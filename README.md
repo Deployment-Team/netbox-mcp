@@ -5,14 +5,14 @@
   <img src="https://img.shields.io/docker/pulls/controlaltautomate/netbox-mcp" alt="Docker Pulls">
   <img src="https://img.shields.io/github/license/Deployment-Team/netbox-mcp" alt="License">
   <img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python Version">
-  <img src="https://img.shields.io/badge/MCP%20Tools-48-brightgreen" alt="MCP Tools">
+  <img src="https://img.shields.io/badge/MCP%20Tools-57-brightgreen" alt="MCP Tools">
 </p>
 
 A comprehensive read/write [Model Context Protocol](https://modelcontextprotocol.io/) server for NetBox network documentation and IPAM systems. Just as our LEGO parrot mascot symbolically mimics human speech, this server allows you to "talk" to your NetBox infrastructure using natural language through LLMs that support MCP.
 
 ## ✨ Key Features
 
-- **48 MCP Tools**: Complete DCIM, IPAM, tenancy, and system management with dual-tool pattern architecture
+- **57 MCP Tools**: Complete DCIM, IPAM, tenancy, and system management with dual-tool pattern architecture
 - **🔐 Safety First**: Built-in dry-run mode, confirmation requirements, and audit logging
 - **🏗️ Self-Describing**: Automatic tool discovery with REST API endpoints
 - **⚡ Enterprise Hardening**: Production-ready secrets management and structured logging
@@ -45,11 +45,13 @@ pip install .
 
 **Version**: 0.10.2 - Core Modules Stabilized
 
-**♻️ CIRCUITS MODULE SEPARATION**: Circuits module moved to separate project for focused development. Core 48 tools for DCIM, IPAM, and Tenancy management are stable and production-ready.
+**🚀 DEVICE TYPE COMPONENT TEMPLATES**: Complete suite of 9 enterprise-grade tools for standardizing device infrastructure by defining physical and logical components for device types.
+
+**♻️ CIRCUITS MODULE SEPARATION**: Circuits module moved to separate project for focused development. Core 57 tools for DCIM, IPAM, and Tenancy management are stable and production-ready.
 
 **🧹 CONTINUOUS OPTIMIZATION**: Maintained clean codebase architecture with enterprise-grade reliability and performance optimization.
 
-**🔧 STABLE CORE MODULES**: 48 production-ready tools across three domains:
+**🔧 STABLE CORE MODULES**: 57 production-ready tools across three domains:
 - **DCIM Tools**: Complete device and infrastructure lifecycle management
 - **IPAM Tools**: IP address and network management with enterprise automation
 - **Tenancy Tools**: Multi-tenant resource management with hierarchical organization
@@ -59,6 +61,17 @@ pip install .
 - `netbox_list_all_prefixes`, `netbox_list_all_vlans`, `netbox_list_all_vrfs` (IPAM)  
 - `netbox_list_all_tenants`, `netbox_list_all_tenant_groups` (Tenancy)
 - `netbox_list_all_manufacturers`, `netbox_list_all_device_types`, `netbox_list_all_device_roles` (Device Management)
+
+**🔧 DEVICE TYPE COMPONENT TEMPLATES**: 9 specialized tools for complete device standardization:
+- `netbox_add_interface_template_to_device_type`: Network interfaces (ethernet, fiber, management ports)
+- `netbox_add_console_port_template_to_device_type`: Serial console access ports
+- `netbox_add_power_port_template_to_device_type`: Power inlet configuration (PSUs, UPS connections)
+- `netbox_add_console_server_port_template_to_device_type`: Out-of-band management connections
+- `netbox_add_power_outlet_template_to_device_type`: Power distribution (PDU outlets, power strips)
+- `netbox_add_front_port_template_to_device_type`: Front-facing patch panel connections
+- `netbox_add_rear_port_template_to_device_type`: Rear-facing infrastructure terminations
+- `netbox_add_device_bay_template_to_device_type`: Child device bays (blade chassis, modular equipment)
+- `netbox_add_module_bay_template_to_device_type`: Modular component slots (line cards, expansion modules)
 
 **🛡️ ENTERPRISE FOUNDATION**: Defensive Read-Validate-Write Pattern with Registry Bridge ensuring 100% tool accessibility and conflict detection accuracy.
 
