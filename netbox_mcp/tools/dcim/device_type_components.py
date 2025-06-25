@@ -19,7 +19,11 @@ Component templates supported:
 
 from netbox_mcp.registry import mcp_tool
 from netbox_mcp.client import NetBoxClient
-from netbox_mcp.exceptions import NetBoxValidationError as ValidationError, NetBoxNotFoundError as NotFoundError, NetBoxError as ConflictError
+from netbox_mcp.exceptions import (
+    NetBoxValidationError as ValidationError, 
+    NetBoxNotFoundError as NotFoundError, 
+    NetBoxConflictError as ConflictError
+)
 import logging
 from typing import Dict, Any, Optional
 
@@ -99,9 +103,12 @@ def netbox_add_interface_template_to_device_type(
         )
         
         if existing_templates:
+            existing_template = existing_templates[0]
+            logger.warning(f"Interface Template conflict detected: '{name}' already exists for Device Type '{device_type_model}' (ID: {existing_template.id})")
             raise ConflictError(
-                f"Conflict: Interface Template '{name}' already exists for Device Type '{device_type_model}'. "
-                f"Template ID: {existing_templates[0].id}"
+                resource_type="Interface Template",
+                identifier=f"{name} for Device Type {device_type_model}",
+                existing_id=existing_template.id
             )
             
     except ConflictError:
@@ -212,7 +219,13 @@ def netbox_add_console_port_template_to_device_type(
             no_cache=True
         )
         if existing_templates:
-            raise ConflictError(f"Console Port Template '{name}' already exists for Device Type '{device_type_model}'.")
+            existing_template = existing_templates[0]
+            logger.warning(f"Console Port Template conflict detected: '{name}' already exists for Device Type '{device_type_model}' (ID: {existing_template.id})")
+            raise ConflictError(
+                resource_type="Console Port Template",
+                identifier=f"{name} for Device Type {device_type_model}",
+                existing_id=existing_template.id
+            )
     except ConflictError:
         raise
     except Exception as e:
@@ -308,7 +321,13 @@ def netbox_add_power_port_template_to_device_type(
             no_cache=True
         )
         if existing_templates:
-            raise ConflictError(f"Power Port Template '{name}' already exists for Device Type '{device_type_model}'.")
+            existing_template = existing_templates[0]
+            logger.warning(f"Power Port Template conflict detected: '{name}' already exists for Device Type '{device_type_model}' (ID: {existing_template.id})")
+            raise ConflictError(
+                resource_type="Power Port Template",
+                identifier=f"{name} for Device Type {device_type_model}",
+                existing_id=existing_template.id
+            )
     except ConflictError:
         raise
     except Exception as e:
@@ -406,7 +425,13 @@ def netbox_add_console_server_port_template_to_device_type(
             no_cache=True
         )
         if existing_templates:
-            raise ConflictError(f"Console Server Port Template '{name}' already exists for Device Type '{device_type_model}'.")
+            existing_template = existing_templates[0]
+            logger.warning(f"Console Server Port Template conflict detected: '{name}' already exists for Device Type '{device_type_model}' (ID: {existing_template.id})")
+            raise ConflictError(
+                resource_type="Console Server Port Template",
+                identifier=f"{name} for Device Type {device_type_model}",
+                existing_id=existing_template.id
+            )
     except ConflictError:
         raise
     except Exception as e:
@@ -502,7 +527,13 @@ def netbox_add_power_outlet_template_to_device_type(
             no_cache=True
         )
         if existing_templates:
-            raise ConflictError(f"Power Outlet Template '{name}' already exists for Device Type '{device_type_model}'.")
+            existing_template = existing_templates[0]
+            logger.warning(f"Power Outlet Template conflict detected: '{name}' already exists for Device Type '{device_type_model}' (ID: {existing_template.id})")
+            raise ConflictError(
+                resource_type="Power Outlet Template",
+                identifier=f"{name} for Device Type {device_type_model}",
+                existing_id=existing_template.id
+            )
     except ConflictError:
         raise
     except Exception as e:
@@ -518,8 +549,15 @@ def netbox_add_power_outlet_template_to_device_type(
             )
             if power_port_templates:
                 power_port_template_id = power_port_templates[0].id
+                logger.info(f"Resolved power port template '{power_port_template}' to ID: {power_port_template_id}")
+            else:
+                logger.error(f"Power Port Template '{power_port_template}' not found for Device Type '{device_type_model}'")
+                raise NotFoundError(f"Power Port Template '{power_port_template}' not found for Device Type '{device_type_model}'. Create the power port template first.")
+        except NotFoundError:
+            raise
         except Exception as e:
-            logger.warning(f"Could not resolve power port template '{power_port_template}': {e}")
+            logger.error(f"Error resolving power port template '{power_port_template}': {e}")
+            raise ValidationError(f"Failed to resolve power port template '{power_port_template}': {e}")
 
     # Create the template
     template_payload = {
@@ -617,10 +655,17 @@ def netbox_add_front_port_template_to_device_type(
             name=rear_port_template
         )
         if not rear_port_templates:
-            raise NotFoundError(f"Rear Port Template '{rear_port_template}' not found for Device Type '{device_type_model}'.")
+            logger.error(f"Rear Port Template '{rear_port_template}' not found for Device Type '{device_type_model}'")
+            raise NotFoundError(f"Rear Port Template '{rear_port_template}' not found for Device Type '{device_type_model}'. Create the rear port template first.")
+        
         rear_port_template_obj = rear_port_templates[0]
+        logger.info(f"Resolved rear port template '{rear_port_template}' to ID: {rear_port_template_obj.id}")
+        
+    except NotFoundError:
+        raise
     except Exception as e:
-        raise NotFoundError(f"Could not find Rear Port Template '{rear_port_template}': {e}")
+        logger.error(f"Error resolving rear port template '{rear_port_template}': {e}")
+        raise ValidationError(f"Failed to resolve rear port template '{rear_port_template}': {e}")
 
     # Check for conflicts
     try:
@@ -630,7 +675,13 @@ def netbox_add_front_port_template_to_device_type(
             no_cache=True
         )
         if existing_templates:
-            raise ConflictError(f"Front Port Template '{name}' already exists for Device Type '{device_type_model}'.")
+            existing_template = existing_templates[0]
+            logger.warning(f"Front Port Template conflict detected: '{name}' already exists for Device Type '{device_type_model}' (ID: {existing_template.id})")
+            raise ConflictError(
+                resource_type="Front Port Template",
+                identifier=f"{name} for Device Type {device_type_model}",
+                existing_id=existing_template.id
+            )
     except ConflictError:
         raise
     except Exception as e:
@@ -727,7 +778,13 @@ def netbox_add_rear_port_template_to_device_type(
             no_cache=True
         )
         if existing_templates:
-            raise ConflictError(f"Rear Port Template '{name}' already exists for Device Type '{device_type_model}'.")
+            existing_template = existing_templates[0]
+            logger.warning(f"Rear Port Template conflict detected: '{name}' already exists for Device Type '{device_type_model}' (ID: {existing_template.id})")
+            raise ConflictError(
+                resource_type="Rear Port Template",
+                identifier=f"{name} for Device Type {device_type_model}",
+                existing_id=existing_template.id
+            )
     except ConflictError:
         raise
     except Exception as e:
@@ -816,7 +873,13 @@ def netbox_add_device_bay_template_to_device_type(
             no_cache=True
         )
         if existing_templates:
-            raise ConflictError(f"Device Bay Template '{name}' already exists for Device Type '{device_type_model}'.")
+            existing_template = existing_templates[0]
+            logger.warning(f"Device Bay Template conflict detected: '{name}' already exists for Device Type '{device_type_model}' (ID: {existing_template.id})")
+            raise ConflictError(
+                resource_type="Device Bay Template",
+                identifier=f"{name} for Device Type {device_type_model}",
+                existing_id=existing_template.id
+            )
     except ConflictError:
         raise
     except Exception as e:
@@ -904,7 +967,13 @@ def netbox_add_module_bay_template_to_device_type(
             no_cache=True
         )
         if existing_templates:
-            raise ConflictError(f"Module Bay Template '{name}' already exists for Device Type '{device_type_model}'.")
+            existing_template = existing_templates[0]
+            logger.warning(f"Module Bay Template conflict detected: '{name}' already exists for Device Type '{device_type_model}' (ID: {existing_template.id})")
+            raise ConflictError(
+                resource_type="Module Bay Template",
+                identifier=f"{name} for Device Type {device_type_model}",
+                existing_id=existing_template.id
+            )
     except ConflictError:
         raise
     except Exception as e:
