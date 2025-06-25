@@ -133,8 +133,7 @@ def netbox_create_circuit(
             "success": True,
             "action": "created",
             "object_type": "circuit",
-            "circuit": result,
-            "dry_run": result.get("dry_run", False)
+            "circuit": result
         }
         
     except Exception as e:
@@ -189,9 +188,7 @@ def netbox_get_circuit_info(
             }
         
         # Get circuit terminations
-        terminations = []
-        if circuit:
-            terminations = list(client.circuits.circuit_terminations.filter(circuit_id=circuit.get('id')))
+        terminations = list(client.circuits.circuit_terminations.filter(circuit_id=circuit.get('id')))
         
         return {
             "success": True,
@@ -514,8 +511,7 @@ def netbox_create_circuit_termination(
             "success": True,
             "action": "created",
             "object_type": "circuit_termination",
-            "termination": result,
-            "dry_run": result.get("dry_run", False)
+            "termination": result
         }
         
     except Exception as e:

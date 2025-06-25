@@ -100,8 +100,7 @@ def netbox_create_provider(
             "success": True,
             "action": "created",
             "object_type": "provider",
-            "provider": result,
-            "dry_run": result.get("dry_run", False)
+            "provider": result
         }
         
     except Exception as e:
@@ -156,9 +155,7 @@ def netbox_get_provider_info(
             }
         
         # Get related circuits
-        circuits = []
-        if provider:
-            circuits = list(client.circuits.circuits.filter(provider_id=provider.get('id')))
+        circuits = list(client.circuits.circuits.filter(provider_id=provider.get('id')))
         
         return {
             "success": True,
