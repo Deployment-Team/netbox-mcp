@@ -1094,8 +1094,8 @@ def netbox_add_front_port_template_to_device_type(
         logger.info(f"Resolved rear port template '{rear_port_template}' to ID: {rear_port_template_obj.id}")
         
         # Validate rear port position against rear port positions
-        if rear_port_position > rear_port_template_obj.positions:
-            raise ValidationError(f"Rear port position {rear_port_position} exceeds available positions ({rear_port_template_obj.positions}) on rear port template '{rear_port_template}'")
+        if rear_port_position > rear_port_template_obj['positions']:
+            raise ValidationError(f"Rear port position {rear_port_position} exceeds available positions ({rear_port_template_obj['positions']}) on rear port template '{rear_port_template}'")
         
     except NotFoundError:
         raise
@@ -1171,7 +1171,7 @@ def netbox_add_front_port_template_to_device_type(
             "description": new_template.description,
             "rear_port_template": rear_port_template,
             "rear_port_position": rear_port_position,
-            "rear_port_max_positions": rear_port_template_obj.positions,
+            "rear_port_max_positions": rear_port_template_obj['positions'],
             "netbox_url": f"{client.base_url}/dcim/device-types/{device_type.id}/front-port-templates/"
         }
     }
