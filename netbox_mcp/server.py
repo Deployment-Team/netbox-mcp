@@ -28,6 +28,10 @@ from typing import Dict, List, Optional, Any
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global variable to hold the server instance for graceful shutdown
+http_server: Optional[HTTPServer] = None
+
+
 # === REGISTRY BRIDGE IMPLEMENTATION ===
 
 # Step 1: Load all tools into our internal registry
@@ -318,14 +322,20 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
 
 def start_health_server(port: int):
     """Start the HTTP health check server in a separate thread."""
+    global http_server
+
     def run_server():
+        global http_server
         try:
-            server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+            http_server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
             logger.info(f"Health check server started on port {port}")
             logger.info(f"Health endpoints: /health, /healthz (liveness), /readyz (readiness)")
-            server.serve_forever()
+            http_server.serve_forever()
         except Exception as e:
-            logger.error(f"Health check server failed: {e}")
+            logger.debug(f"Health check server exception: {e}") # Log exception for debugging
+        finally:
+            logger.info("Health check server has shut down.")
+
 
     health_thread = threading.Thread(target=run_server, daemon=True)
     health_thread.start()
@@ -381,6 +391,9 @@ def initialize_server():
 
 def main():
     """Main entry point for the NetBox MCP server."""
+    global http_server
+    mcp_thread = None
+
     try:
         # Initialize server
         initialize_server()
@@ -400,17 +413,28 @@ def main():
 
         # Keep the main thread alive to allow daemon threads to run
         logger.info("NetBox MCP server is ready and listening")
-        logger.info("Health endpoints: /health, /healthz (liveness), /readyz (readiness)")
 
-        try:
-            while True:
-                time.sleep(3600)  # Sleep for a long time
-        except KeyboardInterrupt:
-            logger.info("Shutting down NetBox MCP server...")
+        # Wait for thread to finish or for KeyboardInterrupt
+        mcp_thread.join()
+
+    except KeyboardInterrupt:
+        logger.info("\nGracefully shutting down NetBox MCP server...")
 
     except Exception as e:
-        logger.error(f"NetBox MCP server error: {e}")
-        raise
+        logger.error(f"NetBox MCP server error: {e}", exc_info=True)
+
+    finally:
+        # Shutdown health server if it's running
+        if http_server:
+            logger.info("Shutting down health check server...")
+            http_server.shutdown()
+            http_server.server_close()
+
+        # The MCP server runs via stdio and doesn't need explicit shutdown here,
+        # as the process termination will handle it.
+        logger.info("NetBox MCP server has been shut down.")
+
+
 
 
 if __name__ == "__main__":
