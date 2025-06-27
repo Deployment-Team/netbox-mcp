@@ -32,35 +32,40 @@ logger = logging.getLogger(__name__)
 
 def get_expanded_modules(client: NetBoxClient, **filter_params) -> list:
     """
-    Get modules with consistent field expansion across all functions.
+    TEMPORARILY DISABLED: Get modules with consistent field expansion.
     
-    This utility ensures all module queries consistently expand relational data
-    to prevent "Unknown" data display issues.
+    NOTE: Expand parameters are not supported by pynetbox library.
+    This utility function is disabled until architectural decision is made
+    about implementing direct REST API calls for expand functionality.
+    
+    See GitHub issue for expand parameter analysis and future implementation.
     
     Args:
         client: NetBoxClient instance
         **filter_params: Filter parameters for module query
         
     Returns:
-        List of modules with expanded relationships
+        List of modules (without expansion - same as normal filter)
     """
-    default_expand = ["module_type", "module_bay", "device"]
-    filter_params["expand"] = ",".join(default_expand)
+    # Temporarily fallback to normal filter without expand
     return list(client.dcim.modules.filter(**filter_params))
 
 
 def get_expanded_module_types(client: NetBoxClient, **filter_params) -> list:
     """
-    Get module types with consistent manufacturer expansion.
+    TEMPORARILY DISABLED: Get module types with consistent manufacturer expansion.
+    
+    NOTE: Expand parameters are not supported by pynetbox library.
+    This utility function is disabled until architectural decision is made.
     
     Args:
         client: NetBoxClient instance
         **filter_params: Filter parameters for module type query
         
     Returns:
-        List of module types with expanded manufacturer data
+        List of module types (without expansion - same as normal filter)
     """
-    filter_params["expand"] = "manufacturer"
+    # Temporarily fallback to normal filter without expand
     return list(client.dcim.module_types.filter(**filter_params))
 
 
@@ -290,9 +295,9 @@ def netbox_list_all_module_types(
         
         # Fetch module types with filtering and expand manufacturer relationship
         if filter_params:
-            module_types_raw = list(client.dcim.module_types.filter(expand="manufacturer", **filter_params)[:limit])
+            module_types_raw = list(client.dcim.module_types.filter(**filter_params)[:limit])
         else:
-            module_types_raw = list(client.dcim.module_types.filter(expand="manufacturer")[:limit])
+            module_types_raw = list(client.dcim.module_types.filter()[:limit])
         
         # Process module types with defensive dict/object handling
         module_types = []
@@ -411,7 +416,7 @@ def netbox_get_module_type_info(
         manufacturer_name = manufacturer_obj.get('name') if isinstance(manufacturer_obj, dict) else manufacturer_obj.name
         
         # Find module type
-        module_types = client.dcim.module_types.filter(manufacturer_id=manufacturer_id, model=model, expand="manufacturer")
+        module_types = client.dcim.module_types.filter(manufacturer_id=manufacturer_id, model=model)
         if not module_types:
             raise NotFoundError(f"Module Type '{model}' by '{manufacturer}' not found")
         
@@ -521,7 +526,7 @@ def netbox_install_module_in_device(
         bay_name_actual = bay.get('name') if isinstance(bay, dict) else bay.name
         
         # Check if bay is already occupied
-        existing_modules = client.dcim.modules.filter(module_bay_id=bay_id, expand="module_type,module_bay,device")
+        existing_modules = client.dcim.modules.filter(module_bay_id=bay_id)
         if existing_modules:
             return {
                 "success": False,
@@ -530,7 +535,7 @@ def netbox_install_module_in_device(
             }
         
         # Find module type
-        module_types = client.dcim.module_types.filter(model=module_type, expand="manufacturer")
+        module_types = client.dcim.module_types.filter(model=module_type)
         if not module_types:
             return {
                 "success": False,
@@ -752,7 +757,7 @@ def netbox_list_device_modules(
         device_name_actual = device.get('name') if isinstance(device, dict) else device.name
         
         # Get all modules for this device with expanded relationships
-        modules_raw = list(client.dcim.modules.filter(device_id=device_id, expand="module_type,module_bay,device")[:limit])
+        modules_raw = list(client.dcim.modules.filter(device_id=device_id)[:limit])
         
         # Process modules with defensive dict/object handling
         modules = []
@@ -923,7 +928,7 @@ def netbox_get_module_info(
         bay_id = bay.get('id') if isinstance(bay, dict) else bay.id
         
         # Find module in the bay
-        modules = client.dcim.modules.filter(module_bay_id=bay_id, expand="module_type,module_bay,device")
+        modules = client.dcim.modules.filter(module_bay_id=bay_id)
         if not modules:
             raise NotFoundError(f"No module installed in bay '{module_bay}' on device '{device_name}'")
         
@@ -1114,7 +1119,7 @@ def netbox_update_module(
         bay_id = bay.get('id') if isinstance(bay, dict) else bay.id
         
         # Find module in the bay
-        modules = client.dcim.modules.filter(module_bay_id=bay_id, expand="module_type,module_bay,device")
+        modules = client.dcim.modules.filter(module_bay_id=bay_id)
         if not modules:
             raise NotFoundError(f"No module installed in bay '{module_bay}' on device '{device_name}'")
         
@@ -1241,7 +1246,7 @@ def netbox_remove_module_from_device(
         bay_id = bay.get('id') if isinstance(bay, dict) else bay.id
         
         # Find module in the bay
-        modules = client.dcim.modules.filter(module_bay_id=bay_id, expand="module_type,module_bay,device")
+        modules = client.dcim.modules.filter(module_bay_id=bay_id)
         if not modules:
             raise NotFoundError(f"No module installed in bay '{module_bay}' on device '{device_name}'")
         
@@ -1499,7 +1504,7 @@ def netbox_get_module_bay_info(
         bay_description = bay.get('description') if isinstance(bay, dict) else getattr(bay, 'description', '')
         
         # Check for installed module
-        modules = client.dcim.modules.filter(module_bay_id=bay_id, expand="module_type,module_bay,device")
+        modules = client.dcim.modules.filter(module_bay_id=bay_id)
         
         if modules:
             # Bay is occupied
