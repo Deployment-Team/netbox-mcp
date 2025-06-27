@@ -570,11 +570,20 @@ def netbox_list_all_modules(
                         manufacturer_name = manufacturer_obj.get('name', 'Unknown')
                     else:
                         manufacturer_name = getattr(manufacturer_obj, 'name', 'Unknown')
-                else:
+                elif hasattr(module_type_obj, 'model'):
+                    # pynetbox object with expand data
                     module_type_model = getattr(module_type_obj, 'model', 'Unknown')
                     module_type_id = getattr(module_type_obj, 'id', None)
                     manufacturer_obj = getattr(module_type_obj, 'manufacturer', None)
-                    manufacturer_name = getattr(manufacturer_obj, 'name', 'Unknown') if manufacturer_obj else 'Unknown'
+                    if hasattr(manufacturer_obj, 'name'):
+                        manufacturer_name = getattr(manufacturer_obj, 'name', 'Unknown')
+                    else:
+                        manufacturer_name = 'Unknown'
+                else:
+                    # Just an ID reference
+                    module_type_model = str(module_type_obj)
+                    module_type_id = module_type_obj
+                    manufacturer_name = 'Unknown'
             else:
                 module_type_model = 'Unknown'
                 module_type_id = None
