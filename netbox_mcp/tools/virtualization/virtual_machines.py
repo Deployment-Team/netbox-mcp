@@ -338,7 +338,7 @@ def netbox_get_virtual_machine_info(
             
             for disk in vm_disks:
                 disk_size_mb = disk.get('size', 0) if isinstance(disk, dict) else getattr(disk, 'size', 0)
-                total_disk_gb += (disk_size_mb / 1024) if disk_size_mb else 0
+                total_disk_gb += round(disk_size_mb / 1024, 2) if disk_size_mb else 0
                 
         except Exception:
             disk_count = 0
@@ -521,8 +521,8 @@ def netbox_list_all_virtual_machines(
             
             # Accumulate resource totals
             total_vcpus += vm_vcpus or 0
-            total_memory_gb += (vm_memory / 1024) if vm_memory else 0
-            total_disk_gb += vm_disk or 0
+            total_memory_gb += round(vm_memory / 1024, 2) if vm_memory else 0
+            total_disk_gb += round(vm_disk, 2) if vm_disk else 0
             
             vms_summary.append({
                 "id": vm_id,
@@ -550,9 +550,10 @@ def netbox_list_all_virtual_machines(
         "resource_totals": {
             "total_vcpus": total_vcpus,
             "total_memory_gb": round(total_memory_gb, 2),
-            "total_disk_gb": total_disk_gb,
+            "total_disk_gb": round(total_disk_gb, 2),
             "average_vcpus": round(total_vcpus / len(vms_summary), 1) if vms_summary else 0,
-            "average_memory_gb": round(total_memory_gb / len(vms_summary), 2) if vms_summary else 0
+            "average_memory_gb": round(total_memory_gb / len(vms_summary), 2) if vms_summary else 0,
+            "average_disk_gb": round(total_disk_gb / len(vms_summary), 2) if vms_summary else 0
         },
         "distribution": {
             "status_counts": status_counts,

@@ -227,26 +227,65 @@ def netbox_get_cluster_info(
         cluster_description = cluster.get('description') if isinstance(cluster, dict) else getattr(cluster, 'description', None)
         cluster_comments = cluster.get('comments') if isinstance(cluster, dict) else getattr(cluster, 'comments', None)
         
-        # Get cluster type information
+        # Get cluster type information - with proper resolution
         cluster_type_obj = cluster.get('type') if isinstance(cluster, dict) else getattr(cluster, 'type', None)
         if isinstance(cluster_type_obj, dict):
+            cluster_type_id = cluster_type_obj.get('id')
             cluster_type_name = cluster_type_obj.get('name', 'N/A')
         else:
-            cluster_type_name = str(cluster_type_obj) if cluster_type_obj else 'N/A'
+            cluster_type_id = getattr(cluster_type_obj, 'id', None) if cluster_type_obj else None
+            cluster_type_name = getattr(cluster_type_obj, 'name', None) if cluster_type_obj else None
         
-        # Get site information
+        # If we don't have proper cluster type name, fetch it directly
+        if not cluster_type_name or cluster_type_name == 'N/A' or cluster_type_name.isdigit():
+            try:
+                if cluster_type_id:
+                    cluster_type_full = client.virtualization.cluster_types.get(cluster_type_id)
+                    cluster_type_name = cluster_type_full.get('name') if isinstance(cluster_type_full, dict) else cluster_type_full.name
+                else:
+                    cluster_type_name = 'N/A'
+            except Exception:
+                cluster_type_name = 'N/A'
+        
+        # Get site information - with proper resolution
         site_obj = cluster.get('site') if isinstance(cluster, dict) else getattr(cluster, 'site', None)
         if isinstance(site_obj, dict):
+            site_id = site_obj.get('id')
             site_name = site_obj.get('name', 'N/A')
         else:
-            site_name = str(site_obj) if site_obj else 'N/A'
+            site_id = getattr(site_obj, 'id', None) if site_obj else None
+            site_name = getattr(site_obj, 'name', None) if site_obj else None
         
-        # Get cluster group information
+        # If we don't have proper site name, fetch it directly
+        if not site_name or site_name == 'N/A' or site_name.isdigit():
+            try:
+                if site_id:
+                    site_full = client.dcim.sites.get(site_id)
+                    site_name = site_full.get('name') if isinstance(site_full, dict) else site_full.name
+                else:
+                    site_name = 'N/A'
+            except Exception:
+                site_name = 'N/A'
+        
+        # Get cluster group information - with proper resolution
         group_obj = cluster.get('group') if isinstance(cluster, dict) else getattr(cluster, 'group', None)
         if isinstance(group_obj, dict):
+            group_id = group_obj.get('id')
             group_name = group_obj.get('name', 'N/A')
         else:
-            group_name = str(group_obj) if group_obj else 'N/A'
+            group_id = getattr(group_obj, 'id', None) if group_obj else None
+            group_name = getattr(group_obj, 'name', None) if group_obj else None
+        
+        # If we don't have proper group name, fetch it directly
+        if not group_name or group_name == 'N/A' or group_name.isdigit():
+            try:
+                if group_id:
+                    group_full = client.virtualization.cluster_groups.get(group_id)
+                    group_name = group_full.get('name') if isinstance(group_full, dict) else group_full.name
+                else:
+                    group_name = 'N/A'
+            except Exception:
+                group_name = 'N/A'
         
         # Get virtual machine count and statistics
         try:
@@ -275,7 +314,7 @@ def netbox_get_cluster_info(
                 
                 total_vcpus += vcpus or 0
                 total_memory_mb += memory or 0
-                total_disk_gb += disk or 0
+                total_disk_gb += round(disk, 2) if disk else 0
                 
         except Exception:
             vm_count = 0
@@ -308,7 +347,7 @@ def netbox_get_cluster_info(
                     "vcpus": total_vcpus,
                     "memory_mb": total_memory_mb,
                     "memory_gb": round(total_memory_mb / 1024, 2) if total_memory_mb else 0,
-                    "disk_gb": total_disk_gb
+                    "disk_gb": round(total_disk_gb, 2)
                 }
             },
             "url": cluster.get('url') if isinstance(cluster, dict) else getattr(cluster, 'url', None)
@@ -391,6 +430,7 @@ def netbox_list_all_clusters(
         total_vms = 0
         total_vcpus = 0
         total_memory_gb = 0
+        total_disk_gb = 0
         status_counts = {}
         
         for cluster in clusters:
@@ -433,15 +473,18 @@ def netbox_list_all_clusters(
                 # Calculate resource totals for this cluster
                 cluster_vcpus = sum(vm.get('vcpus', 0) if isinstance(vm, dict) else getattr(vm, 'vcpus', 0) for vm in cluster_vms)
                 cluster_memory_mb = sum(vm.get('memory', 0) if isinstance(vm, dict) else getattr(vm, 'memory', 0) for vm in cluster_vms)
-                cluster_memory_gb = cluster_memory_mb / 1024 if cluster_memory_mb else 0
+                cluster_memory_gb = round(cluster_memory_mb / 1024, 2) if cluster_memory_mb else 0
+                cluster_disk_gb = sum(vm.get('disk', 0) if isinstance(vm, dict) else getattr(vm, 'disk', 0) for vm in cluster_vms)
                 
                 total_vcpus += cluster_vcpus
                 total_memory_gb += cluster_memory_gb
+                total_disk_gb += cluster_disk_gb
                 
             except Exception:
                 vm_count = 0
                 cluster_vcpus = 0
                 cluster_memory_gb = 0
+                cluster_disk_gb = 0
             
             clusters_summary.append({
                 "id": cluster_id,
@@ -452,7 +495,8 @@ def netbox_list_all_clusters(
                 "status": status_value,
                 "vm_count": vm_count,
                 "vcpus": cluster_vcpus,
-                "memory_gb": round(cluster_memory_gb, 2)
+                "memory_gb": round(cluster_memory_gb, 2),
+                "disk_gb": round(cluster_disk_gb, 2)
             })
             
     except Exception as e:
@@ -465,7 +509,8 @@ def netbox_list_all_clusters(
         "total_virtual_machines": total_vms,
         "resource_totals": {
             "total_vcpus": total_vcpus,
-            "total_memory_gb": round(total_memory_gb, 2)
+            "total_memory_gb": round(total_memory_gb, 2),
+            "total_disk_gb": round(total_disk_gb, 2)
         },
         "status_distribution": status_counts,
         "applied_filters": {

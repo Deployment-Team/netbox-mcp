@@ -120,7 +120,7 @@ def netbox_create_virtual_disk(
         disk_id = new_disk.get('id') if isinstance(new_disk, dict) else new_disk.id
         disk_name_created = new_disk.get('name') if isinstance(new_disk, dict) else new_disk.name
         disk_size_mb = new_disk.get('size') if isinstance(new_disk, dict) else getattr(new_disk, 'size', 0)
-        disk_size_gb = disk_size_mb / 1024 if disk_size_mb else 0
+        disk_size_gb = round(disk_size_mb / 1024, 2) if disk_size_mb else 0
         
     except Exception as e:
         raise ValueError(f"NetBox API error during virtual disk creation: {e}")
@@ -203,14 +203,27 @@ def netbox_get_virtual_disk_info(
     disk_size_gb = disk_size_mb / 1024 if disk_size_mb else 0
     disk_description = virtual_disk.get('description') if isinstance(virtual_disk, dict) else getattr(virtual_disk, 'description', None)
     
-    # Get virtual machine information
+    # Get virtual machine information - with proper resolution
     vm_obj = virtual_disk.get('virtual_machine') if isinstance(virtual_disk, dict) else getattr(virtual_disk, 'virtual_machine', None)
     if isinstance(vm_obj, dict):
+        vm_id = vm_obj.get('id')
         vm_name = vm_obj.get('name', 'N/A')
-        vm_id = vm_obj.get('id', 'N/A')
     else:
-        vm_name = str(vm_obj) if vm_obj else 'N/A'
-        vm_id = getattr(vm_obj, 'id', 'N/A') if vm_obj else 'N/A'
+        vm_id = getattr(vm_obj, 'id', None) if vm_obj else None
+        vm_name = getattr(vm_obj, 'name', None) if vm_obj else None
+    
+    # If we don't have proper VM name, fetch it directly
+    if not vm_name or vm_name == 'N/A' or vm_name.isdigit():
+        try:
+            if vm_id:
+                vm_full = client.virtualization.virtual_machines.get(vm_id)
+                vm_name = vm_full.get('name') if isinstance(vm_full, dict) else vm_full.name
+            else:
+                vm_name = 'N/A'
+                vm_id = 'N/A'
+        except Exception:
+            vm_name = 'N/A'
+            vm_id = vm_id or 'N/A'
     
     return {
         "success": True,
@@ -289,7 +302,7 @@ def netbox_list_all_virtual_disks(
             disk_id = disk.get('id') if isinstance(disk, dict) else disk.id
             disk_name = disk.get('name') if isinstance(disk, dict) else disk.name
             disk_size_mb = disk.get('size') if isinstance(disk, dict) else getattr(disk, 'size', 0)
-            disk_size_gb = disk_size_mb / 1024 if disk_size_mb else 0
+            disk_size_gb = round(disk_size_mb / 1024, 2) if disk_size_mb else 0
             disk_description = disk.get('description') if isinstance(disk, dict) else getattr(disk, 'description', None)
             
             # Accumulate total capacity
@@ -303,12 +316,25 @@ def netbox_list_all_virtual_disks(
             else:
                 size_distribution["large"] += 1
             
-            # Get VM information
+            # Get VM information - with proper resolution
             vm_obj = disk.get('virtual_machine') if isinstance(disk, dict) else getattr(disk, 'virtual_machine', None)
             if isinstance(vm_obj, dict):
+                vm_id = vm_obj.get('id')
                 vm_name = vm_obj.get('name', 'N/A')
             else:
-                vm_name = str(vm_obj) if vm_obj else 'N/A'
+                vm_id = getattr(vm_obj, 'id', None) if vm_obj else None
+                vm_name = getattr(vm_obj, 'name', None) if vm_obj else None
+            
+            # If we don't have proper VM name, fetch it directly
+            if not vm_name or vm_name == 'N/A' or vm_name.isdigit():
+                try:
+                    if vm_id:
+                        vm_full = client.virtualization.virtual_machines.get(vm_id)
+                        vm_name = vm_full.get('name') if isinstance(vm_full, dict) else vm_full.name
+                    else:
+                        vm_name = 'N/A'
+                except Exception:
+                    vm_name = 'N/A'
             
             disks_summary.append({
                 "id": disk_id,
@@ -414,7 +440,7 @@ def netbox_update_virtual_disk(
         disk_id_updated = updated_disk.get('id') if isinstance(updated_disk, dict) else updated_disk.id
         disk_name_updated = updated_disk.get('name') if isinstance(updated_disk, dict) else updated_disk.name
         disk_size_mb = updated_disk.get('size') if isinstance(updated_disk, dict) else getattr(updated_disk, 'size', 0)
-        disk_size_gb = disk_size_mb / 1024 if disk_size_mb else 0
+        disk_size_gb = round(disk_size_mb / 1024, 2) if disk_size_mb else 0
         
     except Exception as e:
         raise ValueError(f"NetBox API error during virtual disk update: {e}")

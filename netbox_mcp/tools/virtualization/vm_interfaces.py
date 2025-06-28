@@ -113,26 +113,39 @@ def netbox_create_vm_interface(
     create_payload = {
         "virtual_machine": vm_id,
         "name": interface_name,
-        "type": interface_type,
         "enabled": enabled
     }
+    
+    # Handle interface type - NetBox VM interfaces may use different type values
+    # For VM interfaces, common types are: virtual, bridge, lag, 1000base-t, etc.
+    if interface_type:
+        create_payload["type"] = interface_type
     
     if mtu:
         create_payload["mtu"] = mtu
     
     if mac_address:
-        create_payload["mac_address"] = mac_address
+        # Ensure MAC address is in proper format
+        mac_address_clean = mac_address.strip().lower()
+        create_payload["mac_address"] = mac_address_clean
     
     if description:
         create_payload["description"] = f"[NetBox-MCP] {description}"
     
     try:
+        # Log the payload for debugging
+        logger.debug(f"Creating VM interface with payload: {create_payload}")
+        
         new_interface = client.virtualization.interfaces.create(confirm=confirm, **create_payload)
         
         # Apply defensive dict/object handling
         interface_id = new_interface.get('id') if isinstance(new_interface, dict) else new_interface.id
         interface_name_created = new_interface.get('name') if isinstance(new_interface, dict) else new_interface.name
         interface_type_created = new_interface.get('type') if isinstance(new_interface, dict) else getattr(new_interface, 'type', None)
+        interface_mac_created = new_interface.get('mac_address') if isinstance(new_interface, dict) else getattr(new_interface, 'mac_address', None)
+        
+        # Log what was actually created for debugging
+        logger.debug(f"Created interface - ID: {interface_id}, Type: {interface_type_created}, MAC: {interface_mac_created}")
         
     except Exception as e:
         raise ValueError(f"NetBox API error during VM interface creation: {e}")
@@ -148,7 +161,7 @@ def netbox_create_vm_interface(
             "virtual_machine_id": vm_id,
             "virtual_machine_name": virtual_machine_name,
             "enabled": new_interface.get('enabled') if isinstance(new_interface, dict) else getattr(new_interface, 'enabled', None),
-            "mac_address": new_interface.get('mac_address') if isinstance(new_interface, dict) else getattr(new_interface, 'mac_address', None)
+            "mac_address": interface_mac_created
         }
     }
 
@@ -217,14 +230,29 @@ def netbox_get_vm_interface_info(
     interface_mac = vm_interface.get('mac_address') if isinstance(vm_interface, dict) else getattr(vm_interface, 'mac_address', None)
     interface_description = vm_interface.get('description') if isinstance(vm_interface, dict) else getattr(vm_interface, 'description', None)
     
-    # Get virtual machine information
+    # Get virtual machine information - with proper resolution
     vm_obj = vm_interface.get('virtual_machine') if isinstance(vm_interface, dict) else getattr(vm_interface, 'virtual_machine', None)
+    
+    # Try to get VM ID first
     if isinstance(vm_obj, dict):
+        vm_id = vm_obj.get('id')
         vm_name = vm_obj.get('name', 'N/A')
-        vm_id = vm_obj.get('id', 'N/A')
     else:
-        vm_name = str(vm_obj) if vm_obj else 'N/A'
-        vm_id = getattr(vm_obj, 'id', 'N/A') if vm_obj else 'N/A'
+        vm_id = getattr(vm_obj, 'id', None) if vm_obj else None
+        vm_name = getattr(vm_obj, 'name', None) if vm_obj else None
+    
+    # If we don't have proper VM name, fetch it directly from the API
+    if not vm_name or vm_name == 'N/A' or vm_name.isdigit():
+        try:
+            if vm_id:
+                vm_full = client.virtualization.virtual_machines.get(vm_id)
+                vm_name = vm_full.get('name') if isinstance(vm_full, dict) else vm_full.name
+            else:
+                vm_name = 'N/A'
+                vm_id = 'N/A'
+        except Exception:
+            vm_name = 'N/A'
+            vm_id = vm_id or 'N/A'
     
     # Get IP addresses assigned to this interface
     try:
@@ -334,12 +362,25 @@ def netbox_list_all_vm_interfaces(
             # Count by type
             type_counts[interface_type_actual] = type_counts.get(interface_type_actual, 0) + 1
             
-            # Get VM information
+            # Get VM information - with proper resolution
             vm_obj = interface.get('virtual_machine') if isinstance(interface, dict) else getattr(interface, 'virtual_machine', None)
             if isinstance(vm_obj, dict):
+                vm_id = vm_obj.get('id')
                 vm_name = vm_obj.get('name', 'N/A')
             else:
-                vm_name = str(vm_obj) if vm_obj else 'N/A'
+                vm_id = getattr(vm_obj, 'id', None) if vm_obj else None
+                vm_name = getattr(vm_obj, 'name', None) if vm_obj else None
+            
+            # If we don't have proper VM name, fetch it directly
+            if not vm_name or vm_name == 'N/A' or vm_name.isdigit():
+                try:
+                    if vm_id:
+                        vm_full = client.virtualization.virtual_machines.get(vm_id)
+                        vm_name = vm_full.get('name') if isinstance(vm_full, dict) else vm_full.name
+                    else:
+                        vm_name = 'N/A'
+                except Exception:
+                    vm_name = 'N/A'
             
             # Count IP addresses for this interface
             try:
@@ -542,12 +583,25 @@ def netbox_delete_vm_interface(
         vm_interface = client.virtualization.interfaces.get(interface_id)
         interface_name = vm_interface.get('name') if isinstance(vm_interface, dict) else vm_interface.name
         
-        # Get VM name
+        # Get VM name - with proper resolution
         vm_obj = vm_interface.get('virtual_machine') if isinstance(vm_interface, dict) else getattr(vm_interface, 'virtual_machine', None)
         if isinstance(vm_obj, dict):
+            vm_id = vm_obj.get('id')
             vm_name = vm_obj.get('name', 'N/A')
         else:
-            vm_name = str(vm_obj) if vm_obj else 'N/A'
+            vm_id = getattr(vm_obj, 'id', None) if vm_obj else None
+            vm_name = getattr(vm_obj, 'name', None) if vm_obj else None
+        
+        # If we don't have proper VM name, fetch it directly
+        if not vm_name or vm_name == 'N/A' or vm_name.isdigit():
+            try:
+                if vm_id:
+                    vm_full = client.virtualization.virtual_machines.get(vm_id)
+                    vm_name = vm_full.get('name') if isinstance(vm_full, dict) else vm_full.name
+                else:
+                    vm_name = 'N/A'
+            except Exception:
+                vm_name = 'N/A'
         
     except ValueError:
         raise
