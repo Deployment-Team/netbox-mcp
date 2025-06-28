@@ -237,14 +237,16 @@ def netbox_get_cluster_info(
             cluster_type_name = getattr(cluster_type_obj, 'name', None) if cluster_type_obj else None
         
         # If we don't have proper cluster type name, fetch it directly
-        if not cluster_type_name or cluster_type_name == 'N/A' or cluster_type_name.isdigit():
+        if not cluster_type_name or cluster_type_name == 'N/A' or str(cluster_type_name).isdigit():
             try:
-                if cluster_type_id:
+                if cluster_type_id and cluster_type_id != 'N/A':
                     cluster_type_full = client.virtualization.cluster_types.get(cluster_type_id)
                     cluster_type_name = cluster_type_full.get('name') if isinstance(cluster_type_full, dict) else cluster_type_full.name
+                    logger.debug(f"Fetched cluster type name from API: {cluster_type_name} for ID {cluster_type_id}")
                 else:
                     cluster_type_name = 'N/A'
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to fetch cluster type name for ID {cluster_type_id}: {e}")
                 cluster_type_name = 'N/A'
         
         # Get site information - with proper resolution
@@ -257,14 +259,16 @@ def netbox_get_cluster_info(
             site_name = getattr(site_obj, 'name', None) if site_obj else None
         
         # If we don't have proper site name, fetch it directly
-        if not site_name or site_name == 'N/A' or site_name.isdigit():
+        if not site_name or site_name == 'N/A' or str(site_name).isdigit():
             try:
-                if site_id:
+                if site_id and site_id != 'N/A':
                     site_full = client.dcim.sites.get(site_id)
                     site_name = site_full.get('name') if isinstance(site_full, dict) else site_full.name
+                    logger.debug(f"Fetched site name from API: {site_name} for ID {site_id}")
                 else:
                     site_name = 'N/A'
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to fetch site name for ID {site_id}: {e}")
                 site_name = 'N/A'
         
         # Get cluster group information - with proper resolution
@@ -277,14 +281,16 @@ def netbox_get_cluster_info(
             group_name = getattr(group_obj, 'name', None) if group_obj else None
         
         # If we don't have proper group name, fetch it directly
-        if not group_name or group_name == 'N/A' or group_name.isdigit():
+        if not group_name or group_name == 'N/A' or str(group_name).isdigit():
             try:
-                if group_id:
+                if group_id and group_id != 'N/A':
                     group_full = client.virtualization.cluster_groups.get(group_id)
                     group_name = group_full.get('name') if isinstance(group_full, dict) else group_full.name
+                    logger.debug(f"Fetched cluster group name from API: {group_name} for ID {group_id}")
                 else:
                     group_name = 'N/A'
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to fetch cluster group name for ID {group_id}: {e}")
                 group_name = 'N/A'
         
         # Get virtual machine count and statistics
@@ -314,7 +320,7 @@ def netbox_get_cluster_info(
                 
                 total_vcpus += vcpus or 0
                 total_memory_mb += memory or 0
-                total_disk_gb += round(disk, 2) if disk else 0
+                total_disk_gb += round(disk / 1024, 2) if disk else 0
                 
         except Exception:
             vm_count = 0
@@ -474,7 +480,7 @@ def netbox_list_all_clusters(
                 cluster_vcpus = sum(vm.get('vcpus', 0) if isinstance(vm, dict) else getattr(vm, 'vcpus', 0) for vm in cluster_vms)
                 cluster_memory_mb = sum(vm.get('memory', 0) if isinstance(vm, dict) else getattr(vm, 'memory', 0) for vm in cluster_vms)
                 cluster_memory_gb = round(cluster_memory_mb / 1024, 2) if cluster_memory_mb else 0
-                cluster_disk_gb = sum(vm.get('disk', 0) if isinstance(vm, dict) else getattr(vm, 'disk', 0) for vm in cluster_vms)
+                cluster_disk_gb = sum((vm.get('disk', 0) if isinstance(vm, dict) else getattr(vm, 'disk', 0)) / 1024 if (vm.get('disk', 0) if isinstance(vm, dict) else getattr(vm, 'disk', 0)) else 0 for vm in cluster_vms)
                 
                 total_vcpus += cluster_vcpus
                 total_memory_gb += cluster_memory_gb

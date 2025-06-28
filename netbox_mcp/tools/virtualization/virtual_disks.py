@@ -213,15 +213,17 @@ def netbox_get_virtual_disk_info(
         vm_name = getattr(vm_obj, 'name', None) if vm_obj else None
     
     # If we don't have proper VM name, fetch it directly
-    if not vm_name or vm_name == 'N/A' or vm_name.isdigit():
+    if not vm_name or vm_name == 'N/A' or str(vm_name).isdigit():
         try:
-            if vm_id:
+            if vm_id and vm_id != 'N/A':
                 vm_full = client.virtualization.virtual_machines.get(vm_id)
                 vm_name = vm_full.get('name') if isinstance(vm_full, dict) else vm_full.name
+                logger.debug(f"Fetched VM name from API: {vm_name} for ID {vm_id}")
             else:
                 vm_name = 'N/A'
                 vm_id = 'N/A'
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to fetch VM name for ID {vm_id}: {e}")
             vm_name = 'N/A'
             vm_id = vm_id or 'N/A'
     
@@ -326,14 +328,16 @@ def netbox_list_all_virtual_disks(
                 vm_name = getattr(vm_obj, 'name', None) if vm_obj else None
             
             # If we don't have proper VM name, fetch it directly
-            if not vm_name or vm_name == 'N/A' or vm_name.isdigit():
+            if not vm_name or vm_name == 'N/A' or str(vm_name).isdigit():
                 try:
-                    if vm_id:
+                    if vm_id and vm_id != 'N/A':
                         vm_full = client.virtualization.virtual_machines.get(vm_id)
                         vm_name = vm_full.get('name') if isinstance(vm_full, dict) else vm_full.name
+                        logger.debug(f"Fetched VM name from API in list: {vm_name} for ID {vm_id}")
                     else:
                         vm_name = 'N/A'
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Failed to fetch VM name in list for ID {vm_id}: {e}")
                     vm_name = 'N/A'
             
             disks_summary.append({

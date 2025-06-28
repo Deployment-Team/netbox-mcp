@@ -364,7 +364,7 @@ def netbox_get_virtual_machine_info(
                 "vcpus": vm_vcpus,
                 "memory_mb": vm_memory,
                 "memory_gb": round(vm_memory / 1024, 2) if vm_memory else None,
-                "disk_gb": vm_disk,
+                "disk_gb": round(vm_disk / 1024, 2) if vm_disk else None,
                 "total_virtual_disks_gb": round(total_disk_gb, 2)
             },
             "role": role_name,
@@ -522,7 +522,7 @@ def netbox_list_all_virtual_machines(
             # Accumulate resource totals
             total_vcpus += vm_vcpus or 0
             total_memory_gb += round(vm_memory / 1024, 2) if vm_memory else 0
-            total_disk_gb += round(vm_disk, 2) if vm_disk else 0
+            total_disk_gb += round(vm_disk / 1024, 2) if vm_disk else 0
             
             vms_summary.append({
                 "id": vm_id,
@@ -536,7 +536,7 @@ def netbox_list_all_virtual_machines(
                     "vcpus": vm_vcpus,
                     "memory_mb": vm_memory,
                     "memory_gb": round(vm_memory / 1024, 2) if vm_memory else 0,
-                    "disk_gb": vm_disk
+                    "disk_gb": round(vm_disk / 1024, 2) if vm_disk else 0
                 }
             })
             
