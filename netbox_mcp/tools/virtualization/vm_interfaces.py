@@ -131,8 +131,11 @@ def netbox_create_vm_interface(
             if ':' not in mac_address_clean:
                 # Convert XXXXXXXXXXXX to XX:XX:XX:XX:XX:XX
                 mac_address_clean = ':'.join([mac_address_clean[i:i+2] for i in range(0, 12, 2)])
-            create_payload["primary_mac_address"] = mac_address_clean
-            logger.debug(f"Setting primary MAC address: {mac_address_clean}")
+            # Use BriefMACAddressRequest format as per NetBox API schema
+            create_payload["primary_mac_address"] = {
+                "mac_address": mac_address_clean
+            }
+            logger.debug(f"Setting primary MAC address object: {mac_address_clean}")
         else:
             logger.warning(f"Invalid MAC address format: {mac_address}, skipping")
     
@@ -147,9 +150,9 @@ def netbox_create_vm_interface(
         if "type" in create_payload:
             logger.debug(f"Interface type being sent to API: {create_payload['type']}")
         
-        # Ensure primary MAC address is properly set for NetBox API
+        # Ensure primary MAC address object is properly set for NetBox API
         if "primary_mac_address" in create_payload:
-            logger.debug(f"Primary MAC address being sent to API: {create_payload['primary_mac_address']}")
+            logger.debug(f"Primary MAC address object being sent to API: {create_payload['primary_mac_address']}")
         
         new_interface = client.virtualization.interfaces.create(confirm=confirm, **create_payload)
         
@@ -256,31 +259,43 @@ def netbox_get_vm_interface_info(
     interface_mac = vm_interface.get('mac_address') if isinstance(vm_interface, dict) else getattr(vm_interface, 'mac_address', None)
     interface_description = vm_interface.get('description') if isinstance(vm_interface, dict) else getattr(vm_interface, 'description', None)
     
-    # Get virtual machine information - with proper resolution
+    # Get virtual machine information - with comprehensive debugging
     vm_obj = vm_interface.get('virtual_machine') if isinstance(vm_interface, dict) else getattr(vm_interface, 'virtual_machine', None)
     
-    # Try to get VM ID first
+    # Debug: Log the entire VM interface object structure first
+    logger.debug(f"Full VM interface object keys: {list(vm_interface.keys()) if isinstance(vm_interface, dict) else dir(vm_interface)}")
+    logger.debug(f"VM object type: {type(vm_obj)}, content: {vm_obj}")
+    
+    vm_id = None
+    vm_name = 'N/A'
+    
     if isinstance(vm_obj, dict):
         vm_id = vm_obj.get('id')
-        vm_name = vm_obj.get('name', 'N/A')
+        vm_name = vm_obj.get('name', vm_obj.get('display', 'N/A'))
+        logger.debug(f"VM from dict - ID: {vm_id}, Name: {vm_name}, All keys: {list(vm_obj.keys())}")
+    elif vm_obj:
+        vm_id = getattr(vm_obj, 'id', None)
+        vm_name = getattr(vm_obj, 'name', getattr(vm_obj, 'display', None))
+        logger.debug(f"VM from object - ID: {vm_id}, Name: {vm_name}, Type: {type(vm_obj)}")
     else:
-        vm_id = getattr(vm_obj, 'id', None) if vm_obj else None
-        vm_name = getattr(vm_obj, 'name', None) if vm_obj else None
+        logger.warning("VM object is None or empty")
     
-    # If we don't have proper VM name, fetch it directly from the API
-    if not vm_name or vm_name == 'N/A' or str(vm_name).isdigit():
+    # Always try to fetch VM name directly from API if we have an ID
+    if vm_id and str(vm_id).isdigit():
         try:
-            if vm_id and vm_id != 'N/A':
-                vm_full = client.virtualization.virtual_machines.get(vm_id)
-                vm_name = vm_full.get('name') if isinstance(vm_full, dict) else vm_full.name
-                logger.debug(f"Fetched VM name from API: {vm_name} for ID {vm_id}")
-            else:
-                vm_name = 'N/A'
-                vm_id = 'N/A'
+            logger.debug(f"Attempting direct VM API call for ID: {vm_id}")
+            vm_full = client.virtualization.virtual_machines.get(vm_id)
+            vm_name_from_api = vm_full.get('name') if isinstance(vm_full, dict) else vm_full.name
+            logger.debug(f"SUCCESS: VM name from direct API call: {vm_name_from_api} for ID {vm_id}")
+            vm_name = vm_name_from_api  # Always use the direct API result
         except Exception as e:
-            logger.warning(f"Failed to fetch VM name for ID {vm_id}: {e}")
-            vm_name = 'N/A'
-            vm_id = vm_id or 'N/A'
+            logger.error(f"FAILED to fetch VM name for ID {vm_id}: {e}")
+            if not vm_name or vm_name == 'N/A':
+                vm_name = f"VM-{vm_id}"  # Fallback to VM-ID format
+    else:
+        logger.warning(f"Cannot fetch VM name - ID is invalid: {vm_id}")
+        vm_id = vm_id or 'N/A'
+        vm_name = 'N/A'
     
     # Get IP addresses assigned to this interface
     try:
@@ -485,7 +500,7 @@ def netbox_update_vm_interface(
         if interface_name: update_fields["name"] = interface_name
         if enabled is not None: update_fields["enabled"] = enabled
         if mtu: update_fields["mtu"] = mtu
-        if mac_address: update_fields["mac_address"] = mac_address
+        if mac_address: update_fields["primary_mac_address"] = {"mac_address": mac_address}
         if description: update_fields["description"] = f"[NetBox-MCP] {description}"
         
         return {
@@ -522,8 +537,18 @@ def netbox_update_vm_interface(
         update_payload["mtu"] = mtu
     
     if mac_address:
-        # NetBox VM interfaces use 'primary_mac_address' field for updates
-        update_payload["primary_mac_address"] = mac_address
+        # NetBox VM interfaces use 'primary_mac_address' field with BriefMACAddressRequest format
+        mac_address_clean = mac_address.strip().upper().replace('-', ':').replace('.', ':')
+        if len(mac_address_clean.replace(':', '')) == 12:
+            if ':' not in mac_address_clean:
+                mac_address_clean = ':'.join([mac_address_clean[i:i+2] for i in range(0, 12, 2)])
+            
+            # Use BriefMACAddressRequest format for updates
+            update_payload["primary_mac_address"] = {
+                "mac_address": mac_address_clean
+            }
+        else:
+            logger.warning(f"Invalid MAC address format for update: {mac_address}")
     
     if description is not None:
         update_payload["description"] = f"[NetBox-MCP] {description}" if description else ""
