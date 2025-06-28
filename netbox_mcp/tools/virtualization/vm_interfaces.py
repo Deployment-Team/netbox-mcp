@@ -19,7 +19,6 @@ def netbox_create_vm_interface(
     client: NetBoxClient,
     virtual_machine_name: str,
     interface_name: str,
-    interface_type: str = "virtual",
     enabled: bool = True,
     mtu: Optional[int] = None,
     mac_address: Optional[str] = None,
@@ -36,8 +35,8 @@ def netbox_create_vm_interface(
         client: NetBoxClient instance (injected)
         virtual_machine_name: Name of the virtual machine
         interface_name: Interface name (e.g., "eth0", "nic1", "mgmt")
-        interface_type: Interface type (virtual, bridge, lag, etc.)
         enabled: Whether the interface is enabled (default: True)
+        # Note: VM interfaces in NetBox do not have a 'type' field
         mtu: Maximum Transmission Unit size
         mac_address: MAC address for the interface
         description: Optional description of the interface
@@ -61,7 +60,7 @@ def netbox_create_vm_interface(
             "would_create": {
                 "virtual_machine": virtual_machine_name,
                 "interface_name": interface_name,
-                "interface_type": interface_type,
+                # interface_type not included - VM interfaces don't have this field
                 "enabled": enabled,
                 "mtu": mtu,
                 "mac_address": mac_address,
@@ -116,12 +115,9 @@ def netbox_create_vm_interface(
         "enabled": enabled
     }
     
-    # Handle interface type - NetBox VM interfaces use specific type format
-    # For VM interfaces, common types are: virtual, bridge, lag, 1000base-t, etc.
-    # NetBox expects the type as a simple string value
-    if interface_type:
-        create_payload["type"] = interface_type
-        logger.debug(f"Setting interface type: {interface_type}")
+    # Note: NetBox VM interfaces do not support a 'type' field
+    # This is different from DCIM interfaces which do have interface types
+    logger.debug("VM interfaces do not support type field - this is normal NetBox behavior")
     
     if mtu:
         create_payload["mtu"] = mtu
@@ -135,8 +131,8 @@ def netbox_create_vm_interface(
             if ':' not in mac_address_clean:
                 # Convert XXXXXXXXXXXX to XX:XX:XX:XX:XX:XX
                 mac_address_clean = ':'.join([mac_address_clean[i:i+2] for i in range(0, 12, 2)])
-            create_payload["mac_address"] = mac_address_clean
-            logger.debug(f"Setting MAC address: {mac_address_clean}")
+            create_payload["primary_mac_address"] = mac_address_clean
+            logger.debug(f"Setting primary MAC address: {mac_address_clean}")
         else:
             logger.warning(f"Invalid MAC address format: {mac_address}, skipping")
     
@@ -151,9 +147,9 @@ def netbox_create_vm_interface(
         if "type" in create_payload:
             logger.debug(f"Interface type being sent to API: {create_payload['type']}")
         
-        # Ensure MAC address is properly set for NetBox API
-        if "mac_address" in create_payload:
-            logger.debug(f"MAC address being sent to API: {create_payload['mac_address']}")
+        # Ensure primary MAC address is properly set for NetBox API
+        if "primary_mac_address" in create_payload:
+            logger.debug(f"Primary MAC address being sent to API: {create_payload['primary_mac_address']}")
         
         new_interface = client.virtualization.interfaces.create(confirm=confirm, **create_payload)
         
@@ -166,15 +162,15 @@ def netbox_create_vm_interface(
         # Log what was actually created for debugging
         logger.debug(f"Created interface - ID: {interface_id}, Type: {interface_type_created}, MAC: {interface_mac_created}")
         
-        # Check if type was properly stored
-        if interface_type and interface_type_created != interface_type:
-            logger.warning(f"Interface type mismatch - Expected: {interface_type}, Got: {interface_type_created}")
+        # VM interfaces do not have type field - this is expected NetBox behavior
+        logger.debug("VM interface created successfully (no type field expected)")
         
-        # Check if MAC address was properly stored
+        # Check if primary MAC address was properly stored  
+        # Note: NetBox returns mac_address (read-only) field, not primary_mac_address
         if mac_address and not interface_mac_created:
-            logger.warning(f"MAC address not stored - Expected: {mac_address}, Got: {interface_mac_created}")
+            logger.warning(f"Primary MAC address not stored - Expected: {mac_address}, Got: {interface_mac_created}")
         elif mac_address and interface_mac_created:
-            logger.debug(f"MAC address successfully stored: {interface_mac_created}")
+            logger.debug(f"Primary MAC address successfully stored: {interface_mac_created}")
         
     except Exception as e:
         raise ValueError(f"NetBox API error during VM interface creation: {e}")
@@ -186,7 +182,7 @@ def netbox_create_vm_interface(
         "data": {
             "interface_id": interface_id,
             "interface_name": interface_name_created,
-            "interface_type": interface_type_created,
+            # interface_type not included - VM interfaces don't have this field
             "virtual_machine_id": vm_id,
             "virtual_machine_name": virtual_machine_name,
             "enabled": new_interface.get('enabled') if isinstance(new_interface, dict) else getattr(new_interface, 'enabled', None),
@@ -459,7 +455,6 @@ def netbox_update_vm_interface(
     client: NetBoxClient,
     interface_id: int,
     interface_name: Optional[str] = None,
-    interface_type: Optional[str] = None,
     enabled: Optional[bool] = None,
     mtu: Optional[int] = None,
     mac_address: Optional[str] = None,
@@ -473,8 +468,8 @@ def netbox_update_vm_interface(
         client: NetBoxClient instance (injected)
         interface_id: ID of the VM interface to update
         interface_name: New name for the interface
-        interface_type: New type for the interface
         enabled: New enabled status
+        # Note: VM interfaces in NetBox do not have a 'type' field
         mtu: New MTU size
         mac_address: New MAC address
         description: New description for the interface
@@ -488,7 +483,6 @@ def netbox_update_vm_interface(
     if not confirm:
         update_fields = {}
         if interface_name: update_fields["name"] = interface_name
-        if interface_type: update_fields["type"] = interface_type
         if enabled is not None: update_fields["enabled"] = enabled
         if mtu: update_fields["mtu"] = mtu
         if mac_address: update_fields["mac_address"] = mac_address
@@ -508,7 +502,7 @@ def netbox_update_vm_interface(
     if not interface_id or interface_id <= 0:
         raise ValueError("interface_id must be a positive integer")
     
-    if not any([interface_name, interface_type, enabled is not None, mtu, mac_address, description is not None]):
+    if not any([interface_name, enabled is not None, mtu, mac_address, description is not None]):
         raise ValueError("At least one field must be provided for update")
     
     # STEP 3: BUILD UPDATE PAYLOAD
@@ -519,8 +513,7 @@ def netbox_update_vm_interface(
             raise ValueError("interface_name cannot be empty")
         update_payload["name"] = interface_name
     
-    if interface_type:
-        update_payload["type"] = interface_type
+    # Note: VM interfaces do not support type field
     
     if enabled is not None:
         update_payload["enabled"] = enabled
@@ -529,7 +522,8 @@ def netbox_update_vm_interface(
         update_payload["mtu"] = mtu
     
     if mac_address:
-        update_payload["mac_address"] = mac_address
+        # NetBox VM interfaces use 'primary_mac_address' field for updates
+        update_payload["primary_mac_address"] = mac_address
     
     if description is not None:
         update_payload["description"] = f"[NetBox-MCP] {description}" if description else ""
