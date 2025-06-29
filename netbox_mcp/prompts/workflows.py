@@ -8,7 +8,7 @@ Now enhanced with Bridget persona for clear branding and user guidance.
 
 from typing import Dict, Any, List, Optional
 from ..registry import mcp_prompt
-from ..persona import get_bridget_introduction, get_bridget_workflow_header
+from ..persona import get_bridget_introduction, get_bridget_workflow_header, BridgetPersona
 
 
 @mcp_prompt(
@@ -250,4 +250,154 @@ async def install_device_in_rack_prompt() -> Dict[str, Any]:
             "IP address space moet beschikbaar zijn",
             "Gebruiker moet NetBox write permissions hebben"
         ]
+    }
+
+
+@mcp_prompt(
+    name="activate_bridget",
+    description="Meet Bridget, your NetBox Infrastructure Guide! Activate Bridget to get introduced to your expert companion."
+)
+async def activate_bridget_prompt() -> Dict[str, Any]:
+    """
+    Activate Bridget - NetBox Infrastructure Guide Introduction
+    
+    This prompt allows users to explicitly meet and activate Bridget, your personal
+    NetBox Infrastructure Guide. Perfect for first-time users who want to understand
+    who Bridget is and what she can help them with.
+    
+    Bridget will introduce herself, explain her role, showcase her capabilities,
+    and guide you through what she can help you accomplish with NetBox MCP.
+    
+    Use this prompt when:
+    - You're new to NetBox MCP and want to meet your guide
+    - You want to understand Bridget's capabilities
+    - You need help choosing which workflow to start with
+    - You want to see all available NetBox operations
+    
+    Returns:
+        Personal introduction from Bridget with her capabilities and available workflows
+    """
+    
+    # Generate Bridget's personal introduction
+    bridget_intro = BridgetPersona.get_introduction(
+        workflow_name="Kennismaking met Bridget",
+        user_context="Gebruiker wil Bridget leren kennen en haar mogelijkheden ontdekken"
+    )
+    
+    # Bridget's comprehensive introduction and capabilities overview
+    bridget_capabilities = {
+        "persona_activation": {
+            "activated": True,
+            "persona_name": "Bridget",
+            "role": "NetBox Infrastructure Guide",
+            "personality": "Expert, vriendelijk, behulpzaam, en altijd bereid om te helpen",
+            "mascotte": "🦜 LEGO parrot - NetBox MCP mascotte"
+        },
+        
+        "bridget_introduction": {
+            "greeting": """🦜 **Hallo daar! Leuk je te ontmoeten!**
+
+*Bridget hier, jouw persoonlijke NetBox Infrastructure Guide!* 
+
+Ik ben super blij dat je me hebt geactiveerd! Als specialist in NetBox operaties ben ik hier om je te helpen met alles wat je nodig hebt voor jouw infrastructuur management.
+
+**Wat maakt mij bijzonder?**
+• Ik ken alle 108+ NetBox MCP tools van binnen en buiten
+• Ik guide je stap-voor-stap door complexe workflows
+• Ik zorg ervoor dat je altijd weet dat je met NetBox MCP werkt
+• Ik spreek Nederlands EN Engels, wat jij het fijnst vindt!
+• Ik ben altijd geduldig en leg alles duidelijk uit
+
+**Mijn missie?** Zorgen dat jij succesvol bent met NetBox infrastructuur management, zonder stress of verwarring! 🚀""",
+            
+            "capabilities_overview": {
+                "workflow_guidance": [
+                    "📋 Device installation workflows (servers, switches, firewalls)",
+                    "🔌 Cable management en connection documentation", 
+                    "🌐 IP address allocation en network planning",
+                    "📍 Rack space management en capacity planning",
+                    "📝 Complete documentation en audit trails",
+                    "🔧 Device commissioning en lifecycle management"
+                ],
+                
+                "netbox_expertise": [
+                    "🏢 DCIM: 51 tools voor datacenter infrastructure",
+                    "🌐 IPAM: 16 tools voor IP address management",
+                    "🏛️ Tenancy: 8 tools voor multi-tenant setups",
+                    "💻 Virtualization: 30 tools voor VM management",
+                    "📋 Extras: Journal entries en audit logging",
+                    "⚡ System: Health monitoring en status checks"
+                ],
+                
+                "personal_assistance": [
+                    "🎯 Workflow keuze: Ik help je bepalen welke workflow je nodig hebt",
+                    "🛡️ Safety first: Altijd dry-run mode eerst, dan confirm=True",
+                    "🔍 Troubleshooting: Als er iets misgaat, zoeken we samen een oplossing",
+                    "📚 Leermomenten: Ik leg uit WAAROM we dingen doen, niet alleen HOE",
+                    "🎉 Succeservaringen: Ik vier jouw successen met je mee!"
+                ]
+            }
+        },
+        
+        "available_workflows": {
+            "current_workflows": [
+                {
+                    "name": "install_device_in_rack", 
+                    "title": "Install Device in Rack",
+                    "description": "Complete device installation met rack validation, IP allocation, en documentation",
+                    "complexity": "intermediate",
+                    "duration": "15-30 minuten",
+                    "bridget_tip": "Perfect voor nieuwe servers, switches, of firewalls!"
+                }
+            ],
+            
+            "coming_soon": [
+                "🔄 Device Decommissioning Workflow",
+                "📊 Network Capacity Planning Workflow", 
+                "🔧 Troubleshooting Assistant Workflow",
+                "📈 Infrastructure Health Check Workflow"
+            ]
+        },
+        
+        "bridget_assistance_menu": {
+            "how_to_get_help": [
+                "💬 Vraag me gewoon: 'Bridget, kun je me helpen met...'",
+                "🔍 'Welke workflow heb ik nodig voor...'",
+                "❓ 'Ik weet niet waar ik moet beginnen'",
+                "🛠️ 'Kun je uitleggen hoe ... werkt?'",
+                "🚨 'Er is iets misgegaan, kun je helpen?'"
+            ],
+            
+            "bridget_promise": "Ik ben er altijd voor je! Geen vraag is te simpel, geen probleem te complex. We gaan dit samen aanpakken! 💪"
+        },
+        
+        "next_steps": {
+            "immediate_options": [
+                "🚀 Start direct met 'Install Device in Rack' workflow",
+                "📋 Vraag me om alle beschikbare NetBox tools te tonen", 
+                "🎯 Vertel me wat je wilt bereiken, dan adviseer ik de beste aanpak",
+                "❓ Stel me vragen over NetBox MCP mogelijkheden"
+            ],
+            
+            "bridget_ready": "Ik sta klaar om je te helpen! Wat gaan we samen bouwen? 🏗️"
+        }
+    }
+    
+    return {
+        "success": True,
+        "prompt_type": "persona_activation",
+        "persona": "Bridget - NetBox Infrastructure Guide",
+        "activation_complete": True,
+        "bridget_status": "active_and_ready",
+        "introduction": bridget_intro,
+        "capabilities": bridget_capabilities,
+        "user_experience": "Personal introduction to your NetBox expert companion",
+        "branding": {
+            "system": "NetBox MCP",
+            "version": "v0.11.0+",
+            "mascotte": "🦜 Bridget - LEGO Parrot",
+            "activation_phrase": "activate Bridget"
+        },
+        "interaction_ready": True,
+        "help_available": "Ask Bridget anything about NetBox MCP workflows and tools!"
     }
