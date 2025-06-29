@@ -510,6 +510,14 @@ This section outlines the general steps for adding new tools. For the mandatory,
 Every new feature, bug fix, or task begins with a GitHub Issue. This is the central hub for discussion and tracking.
 
   * **How to use:** Create an issue with a clear title, a detailed description of the task, and the appropriate labels.
+  * **IMPORTANT - Label Validation:** Always check if labels exist before using them. Create missing labels first.
+    ```bash
+    # MANDATORY: Check existing labels first
+    gh label list
+    
+    # Create missing labels if needed
+    gh label create "new-label" --description "Description" --color "color-hex"
+    ```
   * **GitHub CLI Example:**
     ```bash
     # Example for a new feature
