@@ -293,7 +293,7 @@ async def execute_mcp_prompt(request: PromptRequest) -> Dict[str, Any]:
         logger.info(f"Executing prompt: {request.prompt_name} with arguments: {request.arguments}")
 
         # Execute prompt
-        result = execute_prompt(request.prompt_name, **request.arguments)
+        result = await execute_prompt(request.prompt_name, **request.arguments)
 
         return {
             "success": True,

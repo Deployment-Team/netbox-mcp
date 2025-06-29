@@ -483,7 +483,7 @@ def execute_tool(tool_name: str, client, **parameters) -> Any:
     return tool_function(client=client, **filtered_parameters)
 
 
-def execute_prompt(prompt_name: str, **arguments) -> Any:
+async def execute_prompt(prompt_name: str, **arguments) -> Any:
     """
     Execute a registered prompt.
     
@@ -504,8 +504,14 @@ def execute_prompt(prompt_name: str, **arguments) -> Any:
     
     prompt_function = prompt_metadata["function"]
     
-    # Execute the prompt function with provided arguments
-    if arguments:
-        return prompt_function(**arguments)
+    # Execute the prompt function with provided arguments, handling both sync and async functions
+    if inspect.iscoroutinefunction(prompt_function):
+        if arguments:
+            return await prompt_function(**arguments)
+        else:
+            return await prompt_function()
     else:
-        return prompt_function()
+        if arguments:
+            return prompt_function(**arguments)
+        else:
+            return prompt_function()

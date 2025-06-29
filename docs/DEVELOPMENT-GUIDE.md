@@ -518,6 +518,12 @@ Every new feature, bug fix, or task begins with a GitHub Issue. This is the cent
     # Create missing labels if needed
     gh label create "new-label" --description "Description" --color "color-hex"
     ```
+  * **Label Naming Conventions:** Use consistent naming patterns for better discoverability:
+    - **Domain labels**: `dcim`, `ipam`, `tenancy`, `virtualization`, `prompts`
+    - **Type labels**: `feature`, `bug`, `enhancement`, `documentation`
+    - **Priority labels**: `priority-high`, `priority-medium`, `priority-low`
+    - **Complexity labels**: `complexity-high`, `complexity-medium`, `complexity-low`
+    - **Status labels**: `on-hold`, `ready-for-review`, `needs-testing`
   * **GitHub CLI Example:**
     ```bash
     # Example for a new feature
