@@ -3,92 +3,88 @@ NetBox MCP Workflow Prompts
 
 Interactive prompts that guide users through complex NetBox workflows
 by orchestrating multiple tools and providing contextual guidance.
+Now enhanced with Bridget persona for clear branding and user guidance.
 """
 
 from typing import Dict, Any, List, Optional
 from ..registry import mcp_prompt
+from ..persona import get_bridget_introduction, get_bridget_workflow_header
 
 
 @mcp_prompt(
     name="install_device_in_rack",
-    description="Interactive workflow for installing a new device in a datacenter rack"
+    description="Interactive workflow for installing a new device in a datacenter rack, guided by Bridget"
 )
 async def install_device_in_rack_prompt() -> Dict[str, Any]:
     """
-    Interactive Device Installation Workflow
+    Interactive Device Installation Workflow - Guided by Bridget
     
-    This prompt guides you through the complete process of installing a new device
-    in a datacenter rack, including:
+    Bridget, your NetBox Infrastructure Guide, will personally walk you through
+    the complete process of installing a new device in a datacenter rack.
     
-    1. Pre-installation validation (rack capacity, power, space)
-    2. Resource allocation (IP addresses, rack position)
-    3. NetBox configuration (device creation, connections)
-    4. Documentation generation (installation checklist, labels)
+    She will handle all the complex NetBox operations while keeping you informed
+    about every step in the process. This ensures you always know you're working
+    with NetBox MCP and have expert guidance throughout.
     
-    The workflow will ask for your input step by step and call the appropriate
-    NetBox tools automatically.
+    Workflow Overview:
+    1. Bridget introduces herself and the workflow
+    2. Site and rack validation with live NetBox checks
+    3. Device type verification and compatibility checks  
+    4. Space and power capacity validation
+    5. IP address allocation and network planning
+    6. Device provisioning with full documentation
+    7. Cable management and connection documentation
+    8. Installation checklist generation and completion summary
     
-    Required Information:
-    - Site name where the device will be installed
-    - Rack identifier within the site
-    - Device type/model to be installed
-    - Network requirements (VLAN preference, IP requirements)
-    - Installation preferences (position preference, power requirements)
-    
-    This prompt will orchestrate the following NetBox tools:
-    - netbox_list_all_sites (validate site exists)
-    - netbox_get_rack_elevation (check available space)
-    - netbox_list_all_device_types (validate device type)
-    - netbox_find_next_available_ip (allocate IP address)
-    - netbox_provision_new_device (create device in NetBox)
-    - netbox_create_cable_connection (document connections)
-    - netbox_create_journal_entry (add installation notes)
-    
-    Expected Workflow:
-    1. Site and rack validation
-    2. Device type verification
-    3. Space and power capacity check
-    4. IP address allocation
-    5. Device provisioning
-    6. Cable documentation
-    7. Generate installation checklist
-    
-    Returns:
-        Interactive workflow that collects user input and executes NetBox operations
+    All NetBox API calls are handled by Bridget, with clear explanations
+    of what's happening at each step.
     """
     
+    # Bridget's introduction for this specific workflow
+    bridget_intro = get_bridget_introduction(
+        workflow_name="Install Device in Rack",
+        user_context="Device installation in datacenter rack with full NetBox integration"
+    )
+    
     workflow_steps = {
+        "persona_introduction": bridget_intro,
         "workflow_name": "Install Device in Rack",
+        "guided_by": "Bridget - NetBox Infrastructure Guide",
         "description": "Complete device installation workflow with pre-checks and documentation",
+        "netbox_integration": "Full API integration with real-time validation",
         "steps": [
             {
                 "step": 1,
-                "title": "Site and Rack Validation",
-                "description": "Verify the target site and rack exist and have capacity",
+                "title": "Site en Rack Validatie",
+                "bridget_header": get_bridget_workflow_header(1, "Site en Rack Validatie", 6),
+                "bridget_guidance": "Ik ga eerst controleren of de doelsite en rack bestaan en voldoende capaciteit hebben. Dit voorkomt problemen later in het proces.",
+                "description": "Bridget verifieert de target site en rack, controleert capaciteit",
                 "user_inputs_required": [
                     {
                         "name": "site_name",
                         "type": "string",
                         "required": True,
-                        "description": "Name of the datacenter site (e.g., 'datacenter-1', 'NYC-DC01')"
+                        "description": "Naam van de datacenter site (bijv. 'datacenter-1', 'Amsterdam-DC01')",
+                        "bridget_help": "Ik zal alle beschikbare sites voor je ophalen uit NetBox"
                     },
                     {
                         "name": "rack_name", 
                         "type": "string",
                         "required": True,
-                        "description": "Rack identifier within the site (e.g., 'R01', 'Rack-A-01')"
+                        "description": "Rack identifier binnen de site (bijv. 'R01', 'Rack-A-01')",
+                        "bridget_help": "Na je site keuze laat ik alle beschikbare racks zien met hun capaciteit"
                     }
                 ],
-                "tools_to_execute": [
+                "netbox_tools_executed": [
                     "netbox_get_site_info",
-                    "netbox_get_rack_elevation",
+                    "netbox_get_rack_elevation", 
                     "netbox_get_rack_inventory"
                 ],
-                "validation_checks": [
-                    "Site exists and is active",
-                    "Rack exists in specified site", 
-                    "Rack has available U space",
-                    "Power capacity available"
+                "bridget_validations": [
+                    "Site bestaat en is actief in NetBox",
+                    "Rack bestaat in de gespecificeerde site", 
+                    "Rack heeft beschikbare U-space",
+                    "Voldoende power capaciteit beschikbaar"
                 ]
             },
             {
@@ -212,33 +208,46 @@ async def install_device_in_rack_prompt() -> Dict[str, Any]:
                 ]
             }
         ],
-        "completion_criteria": [
-            "Device successfully created in NetBox",
-            "IP addresses allocated and assigned",
-            "Physical position reserved in rack",
-            "Cable connections documented",
-            "Installation documentation generated",
-            "Journal entry created for audit trail"
+        "bridget_completion_criteria": [
+            "Device succesvol aangemaakt in NetBox",
+            "IP adressen gealloceerd en toegewezen",
+            "Fysieke positie gereserveerd in rack", 
+            "Cable verbindingen gedocumenteerd",
+            "Installatie documentatie gegenereerd",
+            "Journal entry aangemaakt voor audit trail"
         ],
-        "rollback_instructions": "If installation fails, use netbox_decommission_device to clean up partially created resources",
-        "next_steps": [
-            "Physical installation by datacenter technicians",
-            "Network configuration deployment", 
-            "Device commissioning and testing",
-            "Update device status to 'active' after successful installation"
-        ]
+        
+        "bridget_next_steps": [
+            "Fysieke installatie door datacenter technici",
+            "Netwerk configuratie deployment", 
+            "Device commissioning en testing",
+            "Device status updaten naar 'active' na succesvolle installatie"
+        ],
+        
+        "bridget_support": {
+            "rollback_help": "Mocht er iets misgaan, dan kan ik je helpen met netbox_decommission_device om gedeeltelijk aangemaakte resources op te ruimen",
+            "troubleshooting": "Bij problemen kan je me altijd vragen om specifieke NetBox checks uit te voeren",
+            "documentation": "Alle acties worden gedocumenteerd in NetBox journal entries voor volledige traceerbaarheid"
+        }
     }
     
     return {
         "success": True,
-        "prompt_type": "interactive_workflow",
+        "prompt_type": "interactive_workflow_with_persona",
+        "persona": "Bridget - NetBox Infrastructure Guide",
         "workflow": workflow_steps,
-        "estimated_duration": "15-30 minutes",
+        "estimated_duration": "15-30 minuten met Bridget's begeleiding",
         "complexity": "intermediate",
+        "user_experience": "Persoonlijke begeleiding door NetBox expert",
+        "branding": {
+            "system": "NetBox MCP",
+            "version": "v0.11.0+",
+            "mascotte": "Bridget"
+        },
         "prerequisites": [
-            "Site and rack must exist in NetBox",
-            "Device type must be defined in NetBox", 
-            "IP address space must be available",
-            "User must have NetBox write permissions"
+            "Site en rack moeten bestaan in NetBox",
+            "Device type moet gedefinieerd zijn in NetBox", 
+            "IP address space moet beschikbaar zijn",
+            "Gebruiker moet NetBox write permissions hebben"
         ]
     }
