@@ -838,6 +838,7 @@ class NetBoxClient:
             
             # Configure session settings
             self._api.http_session.verify = self.config.verify_ssl
+            self._api.http_session.timeout = self.config.timeout
             # Configure HTTP adapter with retry logic
             adapter = HTTPAdapter(max_retries=3)
             self._api.http_session.mount('http://', adapter)
@@ -1034,22 +1035,6 @@ class NetBoxClient:
             if result and hasattr(result, 'id'):
                 logger.info(f"📝 Result ID: {result.id}")
     
-    def _object_to_dict(self, obj):
-        """
-        Convert a NetBox object to a dictionary representation.
-        
-        This method provides the same functionality as _serialize_result
-        but is named differently for backwards compatibility.
-        
-        Args:
-            obj: NetBox object to convert
-            
-        Returns:
-            Dictionary representation of the object
-        """
-        if hasattr(obj, 'serialize'):
-            return obj.serialize()
-        return dict(obj) if obj else {}
 
     def ensure_manufacturer(
         self,
@@ -1102,7 +1087,7 @@ class NetBoxClient:
                     if not existing_obj:
                         raise NetBoxNotFoundError(f"Manufacturer with ID {manufacturer_id} not found")
                     
-                    result_dict = self._object_to_dict(existing_obj)
+                    result_dict = self._serialize_single_result(existing_obj)
                     return {
                         "success": True,
                         "action": "unchanged",
@@ -1133,7 +1118,7 @@ class NetBoxClient:
                 
                 if existing_manufacturers:
                     existing_obj = existing_manufacturers[0]
-                    existing_dict = self._object_to_dict(existing_obj)
+                    existing_dict = self._serialize_single_result(existing_obj)
                     
                     # Build desired state for comparison
                     desired_state = {"name": name}
@@ -1294,7 +1279,7 @@ class NetBoxClient:
                     if not existing_obj:
                         raise NetBoxNotFoundError(f"Site with ID {site_id} not found")
                     
-                    result_dict = self._object_to_dict(existing_obj)
+                    result_dict = self._serialize_single_result(existing_obj)
                     return {
                         "success": True,
                         "action": "unchanged",
@@ -1325,7 +1310,7 @@ class NetBoxClient:
                 
                 if existing_sites:
                     existing_obj = existing_sites[0]
-                    existing_dict = self._object_to_dict(existing_obj)
+                    existing_dict = self._serialize_single_result(existing_obj)
                     
                     # Build desired state for comparison
                     desired_state = {"name": name, "status": status}
@@ -1492,7 +1477,7 @@ class NetBoxClient:
                     if not existing_obj:
                         raise NetBoxNotFoundError(f"Device role with ID {role_id} not found")
                     
-                    result_dict = self._object_to_dict(existing_obj)
+                    result_dict = self._serialize_single_result(existing_obj)
                     return {
                         "success": True,
                         "action": "unchanged",
@@ -1523,7 +1508,7 @@ class NetBoxClient:
                 
                 if existing_roles:
                     existing_obj = existing_roles[0]
-                    existing_dict = self._object_to_dict(existing_obj)
+                    existing_dict = self._serialize_single_result(existing_obj)
                     
                     # Build desired state for comparison
                     desired_state = {"name": name, "color": color, "vm_role": vm_role}
@@ -1688,7 +1673,7 @@ class NetBoxClient:
                     if not existing_obj:
                         raise NetBoxNotFoundError(f"Device type with ID {device_type_id} not found")
                     
-                    result_dict = self._object_to_dict(existing_obj)
+                    result_dict = self._serialize_single_result(existing_obj)
                     return {
                         "success": True,
                         "action": "unchanged",
@@ -1723,7 +1708,7 @@ class NetBoxClient:
                 
                 if existing_device_types:
                     existing_obj = existing_device_types[0]
-                    existing_dict = self._object_to_dict(existing_obj)
+                    existing_dict = self._serialize_single_result(existing_obj)
                     
                     # Build desired state for comparison
                     desired_state = {"name": name, "manufacturer": manufacturer_id}
@@ -1897,7 +1882,7 @@ class NetBoxClient:
                     if not existing_obj:
                         raise NetBoxNotFoundError(f"Device with ID {device_id} not found")
                     
-                    result_dict = self._object_to_dict(existing_obj)
+                    result_dict = self._serialize_single_result(existing_obj)
                     return {
                         "success": True,
                         "action": "unchanged",
@@ -1936,7 +1921,7 @@ class NetBoxClient:
                 
                 if existing_devices:
                     existing_obj = existing_devices[0]
-                    existing_dict = self._object_to_dict(existing_obj)
+                    existing_dict = self._serialize_single_result(existing_obj)
                     
                     # Build desired state for comparison
                     desired_state = {

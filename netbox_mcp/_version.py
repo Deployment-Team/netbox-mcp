@@ -23,9 +23,9 @@ def get_version() -> str:
         # Try importlib.metadata first (Python 3.8+)
         if sys.version_info >= (3, 8):
             try:
-                from importlib.metadata import version
+                from importlib.metadata import version, PackageNotFoundError
                 return version("netbox-mcp")
-            except Exception:
+            except (PackageNotFoundError, ImportError):
                 pass
         
         # Fallback: read pyproject.toml directly
@@ -44,8 +44,8 @@ def get_version() -> str:
                             version_str = version_part.strip('"\'')
                             return version_str
         
-        # Final fallback
-        return "1.0.0"
+        # Final fallback - should not reach here in production
+        raise RuntimeError("Could not determine version from pyproject.toml")
         
     except Exception as e:
         raise RuntimeError(f"Could not determine version: {e}")
@@ -60,8 +60,8 @@ def get_version_tuple() -> Tuple[int, ...]:
     version_str = get_version()
     try:
         return tuple(int(x) for x in version_str.split("."))
-    except ValueError:
-        return (1, 0, 0)
+    except ValueError as e:
+        raise RuntimeError(f"Invalid version string format: '{version_str}'") from e
 
 # Cache version for performance
 _cached_version: Optional[str] = None
