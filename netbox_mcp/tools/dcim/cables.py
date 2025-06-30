@@ -135,8 +135,17 @@ def netbox_create_cable_connection(
                 "error": f"Interface A '{interface_a_name}' not found on device '{device_a_name}'",
                 "error_type": "NotFoundError"
             }
-        interface_a = interfaces_a[0]
-        interface_a_id = interface_a["id"]
+        interface_a_dict = interfaces_a[0]
+        interface_a_id = interface_a_dict["id"]
+        
+        # Get the pynetbox interface object for cable creation
+        interface_a_obj = client.dcim.interfaces.get(interface_a_id)
+        if not interface_a_obj:
+            return {
+                "success": False,
+                "error": f"Failed to retrieve interface A object for ID {interface_a_id}",
+                "error_type": "NotFoundError"
+            }
         
         # Step 2: Find device B and its interface
         logger.debug(f"Looking up device B: {device_b_name}")
@@ -158,14 +167,23 @@ def netbox_create_cable_connection(
                 "error": f"Interface B '{interface_b_name}' not found on device '{device_b_name}'",
                 "error_type": "NotFoundError"
             }
-        interface_b = interfaces_b[0]
-        interface_b_id = interface_b["id"]
+        interface_b_dict = interfaces_b[0]
+        interface_b_id = interface_b_dict["id"]
+        
+        # Get the pynetbox interface object for cable creation
+        interface_b_obj = client.dcim.interfaces.get(interface_b_id)
+        if not interface_b_obj:
+            return {
+                "success": False,
+                "error": f"Failed to retrieve interface B object for ID {interface_b_id}",
+                "error_type": "NotFoundError"
+            }
         
         # Step 3: Check for existing cable connections (conflict detection)
         logger.debug("Checking for existing cable connections...")
         
         # Check interface A
-        if interface_a.get("cable"):
+        if interface_a_dict.get("cable"):
             return {
                 "success": False,
                 "error": f"Interface A '{device_a_name}:{interface_a_name}' already has a cable connection",
@@ -173,7 +191,7 @@ def netbox_create_cable_connection(
             }
         
         # Check interface B
-        if interface_b.get("cable"):
+        if interface_b_dict.get("cable"):
             return {
                 "success": False,
                 "error": f"Interface B '{device_b_name}:{interface_b_name}' already has a cable connection",
@@ -188,8 +206,8 @@ def netbox_create_cable_connection(
                 "action": "dry_run",
                 "object_type": "cable",
                 "cable": {
-                    "termination_a": {"device": device_a["name"], "interface": interface_a["name"]},
-                    "termination_b": {"device": device_b["name"], "interface": interface_b["name"]},
+                    "termination_a": {"device": device_a["name"], "interface": interface_a_dict["name"]},
+                    "termination_b": {"device": device_b["name"], "interface": interface_b_dict["name"]},
                     "type": cable_type,
                     "status": cable_status,
                     "length": cable_length,
@@ -201,11 +219,10 @@ def netbox_create_cable_connection(
             }
         
         # Step 4: Create the cable with terminations
+        # pynetbox expects interface objects directly as terminations
         cable_data = {
-            "termination_a_type": "dcim.interface",
-            "termination_a_id": interface_a_id,
-            "termination_b_type": "dcim.interface", 
-            "termination_b_id": interface_b_id,
+            "termination_a": interface_a_obj,  # Pass the pynetbox interface object
+            "termination_b": interface_b_obj,  # Pass the pynetbox interface object
             "type": cable_type,
             "status": cable_status
         }
@@ -218,7 +235,8 @@ def netbox_create_cable_connection(
         if description:
             cable_data["description"] = description
         
-        logger.info(f"Creating cable with data: {cable_data}")
+        logger.info(f"Creating cable with termination objects - A: {type(interface_a_obj)}, B: {type(interface_b_obj)}")
+        logger.debug(f"Full cable payload: {cable_data}")
         result = client.dcim.cables.create(confirm=True, **cable_data)
         
         # Step 5: Cache invalidation for data consistency (Issue #29 pattern)
@@ -237,11 +255,11 @@ def netbox_create_cable_connection(
             "terminations": {
                 "termination_a": {
                     "device": {"name": device_a["name"], "id": device_a_id},
-                    "interface": {"name": interface_a["name"], "id": interface_a_id}
+                    "interface": {"name": interface_a_dict["name"], "id": interface_a_id}
                 },
                 "termination_b": {
                     "device": {"name": device_b["name"], "id": device_b_id},
-                    "interface": {"name": interface_b["name"], "id": interface_b_id}
+                    "interface": {"name": interface_b_dict["name"], "id": interface_b_id}
                 }
             },
             "cable_specs": {
