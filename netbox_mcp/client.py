@@ -32,13 +32,20 @@ dynamically routing all requests to the appropriate NetBox API endpoints.
 """
 
 import logging
+import threading
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union, TYPE_CHECKING
 from dataclasses import dataclass
 
 import pynetbox
 import requests
+from requests.adapters import HTTPAdapter
+from requests import Session
 from cachetools import TTLCache
+
+if TYPE_CHECKING:
+    from pynetbox.core.endpoint import Endpoint
+    from pynetbox.core.api import Api
 
 from .config import NetBoxConfig
 from .exceptions import (
@@ -93,7 +100,6 @@ class CacheManager:
         }
         
         # Add thread safety lock
-        import threading
         self.lock = threading.Lock()
         
         if self.enabled:
@@ -109,7 +115,8 @@ class CacheManager:
             ]
             
             for obj_type, ttl in object_types:
-                self.caches[obj_type] = TTLCache(maxsize=config.cache.max_items // len(object_types), ttl=ttl)
+                cache_size = config.cache.max_items // len(object_types) if object_types else config.cache.max_items
+                self.caches[obj_type] = TTLCache(maxsize=cache_size, ttl=ttl)
             
             # Default cache for other object types
             self.default_cache = TTLCache(maxsize=config.cache.max_items // 4, ttl=config.cache.ttl.default)
@@ -362,7 +369,7 @@ class EndpointWrapper:
     Following Gemini's architectural guidance for enterprise-grade API wrapping.
     """
     
-    def __init__(self, endpoint, client: 'NetBoxClient', app_name: str = None):
+    def __init__(self, endpoint, client: 'NetBoxClient', app_name: Optional[str] = None):
         """
         Initialize EndpointWrapper with pynetbox endpoint and client reference.
         
@@ -402,6 +409,12 @@ class EndpointWrapper:
         if hasattr(result, 'serialize'):
             return result.serialize()
         return result
+    
+    def _serialize_single_result(self, result) -> dict:
+        """Serialize a single pynetbox object to dictionary."""
+        if hasattr(result, 'serialize'):
+            return result.serialize()
+        return dict(result) if result is not None else {}
     
     def filter(self, *args, no_cache=False, **kwargs) -> list:
         """
@@ -457,7 +470,7 @@ class EndpointWrapper:
         
         return serialized_result
     
-    def get(self, *args, **kwargs) -> dict:
+    def get(self, *args, **kwargs) -> Optional[dict]:
         """
         Wrapped get() method with caching for single object retrieval.
         
@@ -486,7 +499,7 @@ class EndpointWrapper:
             return None
         
         # Serialize for caching
-        serialized_result = self._serialize_result(live_result)
+        serialized_result = self._serialize_single_result(live_result)
         
         # Store in cache
         self.cache.set(cache_key, serialized_result, self._obj_type)
@@ -546,8 +559,6 @@ class EndpointWrapper:
             NetBoxError: For API or validation errors
         """
         # Import exceptions locally to avoid circular imports
-        from .exceptions import NetBoxConfirmationError, NetBoxError
-        
         # Check 1: Per-call confirmation requirement (Gemini's safety pattern)
         if not confirm:
             raise NetBoxConfirmationError(
@@ -566,7 +577,7 @@ class EndpointWrapper:
             result = self._endpoint.create(**payload)
             
             # Serialize result for return
-            serialized_result = self._serialize_result(result)
+            serialized_result = self._serialize_single_result(result)
             
             # Type-based cache invalidation (Gemini's recommended strategy)
             self._client.cache.invalidate_pattern(self._obj_type)
@@ -596,9 +607,6 @@ class EndpointWrapper:
             NetBoxConfirmationError: If confirm=True not provided
             NetBoxError: For API or validation errors
         """
-        # Import exceptions locally
-        from .exceptions import NetBoxConfirmationError, NetBoxError
-        
         # Check 1: Per-call confirmation requirement
         if not confirm:
             raise NetBoxConfirmationError(
@@ -626,7 +634,7 @@ class EndpointWrapper:
             obj_to_update.save()
             
             # Serialize result
-            serialized_result = self._serialize_result(obj_to_update)
+            serialized_result = self._serialize_single_result(obj_to_update)
             
             # Type-based cache invalidation
             self._client.cache.invalidate_pattern(self._obj_type)
@@ -655,9 +663,6 @@ class EndpointWrapper:
             NetBoxConfirmationError: If confirm=True not provided
             NetBoxError: For API or validation errors
         """
-        # Import exceptions locally
-        from .exceptions import NetBoxConfirmationError, NetBoxError
-        
         # Check 1: Per-call confirmation requirement
         if not confirm:
             raise NetBoxConfirmationError(
@@ -690,6 +695,14 @@ class EndpointWrapper:
             error_msg = f"Failed to delete {self._obj_type} ID {obj_id}: {e}"
             logger.error(error_msg)
             raise NetBoxError(error_msg)
+    
+    def __call__(self, *args, **kwargs):
+        """Make EndpointWrapper callable to handle method calls through the endpoint."""
+        return self._endpoint(*args, **kwargs)
+    
+    def __getitem__(self, key):
+        """Support indexing operations on the wrapped endpoint."""
+        return self._endpoint[key]
 
 
 class AppWrapper:
@@ -764,6 +777,14 @@ class AppWrapper:
             f"NetBox API application '{self._app_name}' has no endpoint named '{name}'. "
             f"Available endpoints can be discovered through the NetBox API documentation."
         )
+    
+    def __call__(self, *args, **kwargs):
+        """Make AppWrapper callable to handle method calls through the app."""
+        return self._app(*args, **kwargs)
+    
+    def __getitem__(self, key):
+        """Support indexing operations on the wrapped app."""
+        return self._app[key]
 
 
 class NetBoxClient:
@@ -817,7 +838,10 @@ class NetBoxClient:
             
             # Configure session settings
             self._api.http_session.verify = self.config.verify_ssl
-            self._api.http_session.timeout = self.config.timeout
+            # Configure HTTP adapter with retry logic
+            adapter = HTTPAdapter(max_retries=3)
+            self._api.http_session.mount('http://', adapter)
+            self._api.http_session.mount('https://', adapter)
             
             # Add custom headers if configured
             if self.config.custom_headers:
@@ -831,10 +855,12 @@ class NetBoxClient:
             raise NetBoxConnectionError(error_msg, {"url": self.config.url})
     
     @property
-    def api(self) -> pynetbox.api:
+    def api(self) -> 'Api':
         """Get the pynetbox API instance."""
         if self._api is None:
             self._initialize_connection()
+        if self._api is None:
+            raise NetBoxConnectionError("Failed to initialize API connection")
         return self._api
     
     def health_check(self, force: bool = False) -> ConnectionStatus:
@@ -986,7 +1012,7 @@ class NetBoxClient:
             # Don't raise error, just log - we'll simulate the operation
     
     def _log_write_operation(self, operation: str, object_type: str, data: Dict[str, Any], 
-                           result: Any = None, error: Exception = None) -> None:
+                           result: Any = None, error: Optional[Exception] = None) -> None:
         """
         Log write operations for audit trail.
         
@@ -1008,6 +1034,22 @@ class NetBoxClient:
             if result and hasattr(result, 'id'):
                 logger.info(f"📝 Result ID: {result.id}")
     
+    def _object_to_dict(self, obj):
+        """
+        Convert a NetBox object to a dictionary representation.
+        
+        This method provides the same functionality as _serialize_result
+        but is named differently for backwards compatibility.
+        
+        Args:
+            obj: NetBox object to convert
+            
+        Returns:
+            Dictionary representation of the object
+        """
+        if hasattr(obj, 'serialize'):
+            return obj.serialize()
+        return dict(obj) if obj else {}
 
     def ensure_manufacturer(
         self,
@@ -1715,7 +1757,7 @@ class NetBoxClient:
                     
                     if comparison["needs_update"]:
                         # Prepare update with metadata tracking
-                        update_data = self._prepare_metadata_update(desired_state, "device_types", "update", batch_id)
+                        update_data = self._prepare_metadata_update(desired_state, "device_types", "update")
                         
                         logger.info(f"Updating device type '{name}' - managed fields changed: {[f['field'] for f in comparison['updated_fields']]}")
                         result = self.update_object("device_types", existing_obj.id, update_data, confirm=True)
@@ -1763,7 +1805,7 @@ class NetBoxClient:
                         create_data["description"] = description
                     
                     # Add metadata for new objects
-                    create_data = self._prepare_metadata_update(create_data, "device_types", "create", batch_id)
+                    create_data = self._prepare_metadata_update(create_data, "device_types", "create")
                     
                     result = self.create_object("device_types", create_data, confirm=True)
                     
@@ -2059,8 +2101,13 @@ class NetBoxBulkOrchestrator:
             'device_types': {},
             'devices': {},
             'interfaces': {},
-            'ip_addresses': {}
         }
+        
+        # Operation cache for storing created object IDs during operations
+        self.operation_cache = {}
+        
+        # Complete the object_cache
+        self.object_cache['ip_addresses'] = {}
         
         # Operation tracking
         self.batch_id = self._generate_batch_id()
@@ -2293,6 +2340,11 @@ class NetBoxBulkOrchestrator:
         if not name:
             return None
         
+        # Ensure API is available
+        if not self.client._api:
+            logger.error("NetBox API not initialized")
+            return None
+        
         try:
             if obj_type == "manufacturers":
                 results = self.client._api.dcim.manufacturers.filter(name=name)
@@ -2308,7 +2360,7 @@ class NetBoxBulkOrchestrator:
                     if manufacturer:
                         results = self.client._api.dcim.device_types.filter(
                             model=name, 
-                            manufacturer_id=manufacturer[0].id
+                            manufacturer_id=list(manufacturer)[0].id
                         )
                     else:
                         return None
@@ -2319,7 +2371,7 @@ class NetBoxBulkOrchestrator:
             else:
                 return None
             
-            return results[0] if results else None
+            return list(results)[0] if results else None
             
         except Exception as e:
             logger.warning(f"Error finding existing {obj_type} '{name}': {e}")
@@ -2350,7 +2402,7 @@ class NetBoxBulkOrchestrator:
                     "to": new_value
                 }
         
-        return len(changes) > 0, changes
+        return bool(changes), changes
     
     def execute_pass_1(self, confirm: bool = False) -> Dict[str, Any]:
         """
@@ -2438,7 +2490,6 @@ class NetBoxBulkOrchestrator:
                 name=obj_name,
                 slug=obj_data.get("slug"),
                 description=obj_data.get("description", ""),
-                batch_id=obj_data.get("batch_id"),
                 confirm=confirm
             )
             
@@ -2448,7 +2499,6 @@ class NetBoxBulkOrchestrator:
                 slug=obj_data.get("slug"),
                 status=obj_data.get("status", "active"),
                 description=obj_data.get("description", ""),
-                batch_id=obj_data.get("batch_id"),
                 confirm=confirm
             )
             
@@ -2459,7 +2509,6 @@ class NetBoxBulkOrchestrator:
                 color=obj_data.get("color", "9e9e9e"),
                 vm_role=obj_data.get("vm_role", False),
                 description=obj_data.get("description", ""),
-                batch_id=obj_data.get("batch_id"),
                 confirm=confirm
             )
             
@@ -2477,7 +2526,6 @@ class NetBoxBulkOrchestrator:
                 model=obj_data.get("model"),
                 slug=obj_data.get("slug"),
                 description=obj_data.get("description", ""),
-                batch_id=obj_data.get("batch_id"),
                 confirm=confirm
             )
             
@@ -2510,7 +2558,6 @@ class NetBoxBulkOrchestrator:
                 platform=obj_data.get("platform"),
                 status=obj_data.get("status", "active"),
                 description=obj_data.get("description", ""),
-                batch_id=obj_data.get("batch_id"),
                 confirm=confirm
             )
             
@@ -2594,10 +2641,14 @@ class NetBoxBulkOrchestrator:
             return self.operation_cache[cache_key]
         
         # Fallback to API lookup
+        if not self.client._api:
+            logger.error("NetBox API not initialized")
+            return None
+            
         try:
             manufacturers = self.client._api.dcim.manufacturers.filter(name=manufacturer_name)
             if manufacturers:
-                manufacturer_id = manufacturers[0].id
+                manufacturer_id = list(manufacturers)[0].id
                 self.operation_cache[cache_key] = manufacturer_id
                 return manufacturer_id
         except Exception as e:
@@ -2615,10 +2666,14 @@ class NetBoxBulkOrchestrator:
             return self.operation_cache[cache_key]
         
         # Fallback to API lookup
+        if not self.client._api:
+            logger.error("NetBox API not initialized")
+            return None
+            
         try:
             sites = self.client._api.dcim.sites.filter(name=site_name)
             if sites:
-                site_id = sites[0].id
+                site_id = list(sites)[0].id
                 self.operation_cache[cache_key] = site_id
                 return site_id
         except Exception as e:
@@ -2636,10 +2691,14 @@ class NetBoxBulkOrchestrator:
             return self.operation_cache[cache_key]
         
         # Fallback to API lookup
+        if not self.client._api:
+            logger.error("NetBox API not initialized")
+            return None
+            
         try:
             roles = self.client._api.dcim.device_roles.filter(name=role_name)
             if roles:
-                role_id = roles[0].id
+                role_id = list(roles)[0].id
                 self.operation_cache[cache_key] = role_id
                 return role_id
         except Exception as e:
@@ -2657,10 +2716,14 @@ class NetBoxBulkOrchestrator:
             return self.operation_cache[cache_key]
         
         # Fallback to API lookup
+        if not self.client._api:
+            logger.error("NetBox API not initialized")
+            return None
+            
         try:
             device_types = self.client._api.dcim.device_types.filter(name=device_type_name)
             if device_types:
-                device_type_id = device_types[0].id
+                device_type_id = list(device_types)[0].id
                 self.operation_cache[cache_key] = device_type_id
                 return device_type_id
         except Exception as e:
