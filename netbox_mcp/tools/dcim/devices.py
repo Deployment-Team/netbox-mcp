@@ -1372,30 +1372,62 @@ def netbox_update_device(
             except ValueError as e:
                 raise ValueError(f"Invalid OOB IP address format '{oob_ip}': {e}")
             
-            # Look for existing IP address
+            # Look for existing IP address with comprehensive search
             existing_ips = client.ipam.ip_addresses.filter(address=validated_oob_ip)
             if existing_ips:
                 # Use existing IP address
                 ip_obj = existing_ips[0]
                 oob_ip_id = ip_obj.get('id') if isinstance(ip_obj, dict) else ip_obj.id
                 
-                # Check if IP is already assigned to an interface (OOB should be device-level only)
-                if ip_obj.get('assigned_object_type') == 'dcim.interface':
-                    logger.warning(f"OOB IP {validated_oob_ip} is currently assigned to an interface, proceeding anyway")
+                # Apply defensive dict/object handling for assigned_object_type check
+                assigned_object_type = ip_obj.get('assigned_object_type') if isinstance(ip_obj, dict) else getattr(ip_obj, 'assigned_object_type', None)
                 
+                # Check if IP is already assigned to an interface (OOB should be device-level only)
+                if assigned_object_type == 'dcim.interface':
+                    logger.warning(f"OOB IP {validated_oob_ip} is currently assigned to an interface, proceeding to use for device OOB field anyway")
+                
+                logger.debug(f"Using existing OOB IP address: {validated_oob_ip} (ID: {oob_ip_id})")
                 update_payload["oob_ip"] = oob_ip_id
             else:
-                # Create new IP address for OOB use
-                ip_data = {
-                    "address": validated_oob_ip,
-                    "status": "active",
-                    "description": f"[NetBox-MCP] OOB IP for device {device_name}"
-                }
+                # Try alternative search without full CIDR (in case of format mismatch)
+                ip_without_cidr = validated_oob_ip.split('/')[0]
+                alternative_ips = client.ipam.ip_addresses.filter(address__net_contains=ip_without_cidr)
                 
-                logger.debug(f"Creating new OOB IP address: {validated_oob_ip}")
-                new_ip = client.ipam.ip_addresses.create(confirm=True, **ip_data)
-                oob_ip_id = new_ip.get('id') if isinstance(new_ip, dict) else new_ip.id
-                update_payload["oob_ip"] = oob_ip_id
+                if alternative_ips:
+                    # Found IP with different CIDR notation
+                    ip_obj = alternative_ips[0]
+                    oob_ip_id = ip_obj.get('id') if isinstance(ip_obj, dict) else ip_obj.id
+                    existing_address = ip_obj.get('address') if isinstance(ip_obj, dict) else getattr(ip_obj, 'address', None)
+                    
+                    logger.info(f"Found existing IP {existing_address} for OOB request {validated_oob_ip}, using existing IP")
+                    update_payload["oob_ip"] = oob_ip_id
+                else:
+                    # Only create new IP if absolutely not found
+                    ip_data = {
+                        "address": validated_oob_ip,
+                        "status": "active",
+                        "description": f"[NetBox-MCP] OOB IP for device {device_name}"
+                    }
+                    
+                    logger.debug(f"Creating new OOB IP address: {validated_oob_ip}")
+                    try:
+                        new_ip = client.ipam.ip_addresses.create(confirm=True, **ip_data)
+                        oob_ip_id = new_ip.get('id') if isinstance(new_ip, dict) else new_ip.id
+                        update_payload["oob_ip"] = oob_ip_id
+                    except Exception as create_error:
+                        # If creation fails due to duplicate, try one more search
+                        if "Duplicate IP address" in str(create_error):
+                            logger.warning(f"Duplicate IP detected during creation, retrying search for {validated_oob_ip}")
+                            retry_ips = client.ipam.ip_addresses.filter(address=validated_oob_ip)
+                            if retry_ips:
+                                ip_obj = retry_ips[0]
+                                oob_ip_id = ip_obj.get('id') if isinstance(ip_obj, dict) else ip_obj.id
+                                update_payload["oob_ip"] = oob_ip_id
+                                logger.info(f"Successfully found existing OOB IP on retry: {validated_oob_ip} (ID: {oob_ip_id})")
+                            else:
+                                raise create_error
+                        else:
+                            raise create_error
                 
         except ValueError:
             raise
@@ -1557,11 +1589,46 @@ def netbox_set_primary_ip(
     except Exception as e:
         raise ValueError(f"Could not find device '{device_name}': {e}")
     
-    # STEP 5: FIND IP ADDRESS OBJECT
+    # STEP 5: FIND IP ADDRESS OBJECT WITH FLEXIBLE SEARCH
     try:
         existing_ips = client.ipam.ip_addresses.filter(address=validated_ip)
+        
         if not existing_ips:
-            raise ValueError(f"IP address {validated_ip} not found in NetBox")
+            # If exact match failed, try alternative search methods
+            ip_base = validated_ip.split('/')[0]  # Get IP without subnet
+            
+            # Try searching for IP with common subnet masks
+            alternative_searches = []
+            if '/' not in ip_address:  # Original input had no subnet
+                # Try common subnets for the IP
+                alternative_searches = [f"{ip_base}/24", f"{ip_base}/32", f"{ip_base}/16"]
+            else:
+                # Try without subnet or with alternative subnets
+                alternative_searches = [ip_base, f"{ip_base}/24", f"{ip_base}/32"]
+            
+            for search_ip in alternative_searches:
+                existing_ips = client.ipam.ip_addresses.filter(address=search_ip)
+                if existing_ips:
+                    logger.info(f"Found IP address {search_ip} for search term {ip_address}")
+                    validated_ip = search_ip  # Update validated_ip to match what we found
+                    break
+            
+            if not existing_ips:
+                # Final attempt: search by IP address alone (network contains search)
+                try:
+                    existing_ips = client.ipam.ip_addresses.filter(address__net_contains=ip_base)
+                    if existing_ips:
+                        found_ip = existing_ips[0]
+                        found_address = found_ip.get('address') if isinstance(found_ip, dict) else getattr(found_ip, 'address', None)
+                        logger.info(f"Found IP address {found_address} using network search for {ip_base}")
+                        validated_ip = found_address
+                except Exception as search_error:
+                    logger.debug(f"Network search failed: {search_error}")
+        
+        if not existing_ips:
+            # Provide helpful error message
+            search_terms_tried = [validated_ip] + alternative_searches if 'alternative_searches' in locals() else [validated_ip]
+            raise ValueError(f"IP address not found in NetBox. Tried: {', '.join(search_terms_tried)}. Ensure IP is assigned to device interface first.")
         
         ip_address_obj = existing_ips[0]
         ip_id = ip_address_obj.get('id') if isinstance(ip_address_obj, dict) else ip_address_obj.id
@@ -1582,13 +1649,30 @@ def netbox_set_primary_ip(
         
         # Get the interface and verify it belongs to our device
         interface = client.dcim.interfaces.get(assigned_object_id)
-        interface_device_id = interface.get('device', {}).get('id') if isinstance(interface, dict) else getattr(interface.device, 'id', None)
+        
+        # Apply defensive dict/object handling for interface
+        if isinstance(interface, dict):
+            interface_device = interface.get('device', {})
+            if isinstance(interface_device, dict):
+                interface_device_id = interface_device.get('id')
+                interface_device_name = interface_device.get('name', 'Unknown')
+            else:
+                interface_device_id = getattr(interface_device, 'id', None) if interface_device else None
+                interface_device_name = getattr(interface_device, 'name', 'Unknown') if interface_device else 'Unknown'
+            interface_name = interface.get('name', 'Unknown')
+        else:
+            # Handle as object
+            interface_device = getattr(interface, 'device', None)
+            if interface_device:
+                interface_device_id = getattr(interface_device, 'id', None)
+                interface_device_name = getattr(interface_device, 'name', 'Unknown')
+            else:
+                interface_device_id = None
+                interface_device_name = 'Unknown'
+            interface_name = getattr(interface, 'name', 'Unknown')
         
         if interface_device_id != device_id:
-            interface_device_name = interface.get('device', {}).get('name', 'Unknown') if isinstance(interface, dict) else getattr(interface.device, 'name', 'Unknown')
             raise ValueError(f"IP address {validated_ip} is assigned to device '{interface_device_name}', not '{device_name}'")
-        
-        interface_name = interface.get('name') if isinstance(interface, dict) else interface.name
         
     except ValueError:
         raise
