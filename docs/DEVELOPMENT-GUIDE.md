@@ -11,9 +11,11 @@ The NetBox MCP provides **specialized tools** that enable Large Language Models 
 ### **2.1 Production Status**
 
   - **Version**: 1.0.0 - Production Release Complete
-  - **Tool Count**: 47 MCP tools covering all NetBox domains
+  - **Tool Count**: 142+ MCP tools covering all NetBox domains
   - **Architecture**: Hierarchical domain structure with Registry Bridge pattern
   - **Safety**: Enterprise-grade with dry-run mode, confirmation requirements, and audit logging
+  - **Monitoring**: Real-time performance monitoring with enterprise dashboard
+  - **Documentation**: Auto-generated OpenAPI 3.0 specifications
 
 ### **2.2 Core Components**
 
