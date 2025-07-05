@@ -43,13 +43,80 @@ This fundamental LLM architecture ensures both detailed inspection AND bulk expl
 
 To contribute to this project, please use the following setup. This ensures consistency and proper testing against the live-test environment.
 
-### **3.1 Directory Structure**
+### **3.1 Virtual Environment Setup**
+
+**MANDATORY**: Always use a Python virtual environment for development to ensure dependency isolation and consistent development experience.
+
+#### **Creating and Activating Virtual Environment**
+
+```bash
+# Navigate to project root
+cd /Users/elvis/Developer/github/netbox-mcp
+
+# Create virtual environment (first time only)
+python3 -m venv venv
+
+# Activate virtual environment (every development session)
+source venv/bin/activate
+
+# Install dependencies in development mode
+pip install -e ".[dev]"
+
+# Install additional development tools
+pip install black flake8 mypy pytest-cov pre-commit
+
+# Verify installation
+python -c "import netbox_mcp; print('NetBox MCP installed successfully')"
+```
+
+#### **Virtual Environment Best Practices**
+
+**✅ DO:**
+- Always activate venv before development: `source venv/bin/activate`
+- Install new dependencies in venv: `pip install package-name`
+- Generate requirements: `pip freeze > requirements-dev.txt`
+- Deactivate when done: `deactivate`
+
+**❌ DON'T:**
+- Never commit venv/ directory (already in .gitignore)
+- Don't install packages globally when developing
+- Don't mix system Python with venv packages
+
+#### **Development Workflow with Virtual Environment**
+
+```bash
+# Daily development workflow
+source venv/bin/activate                    # Start session
+python -m netbox_mcp.server                # Run server
+pytest tests/ -v                           # Run tests
+black netbox_mcp/ tests/                   # Format code
+flake8 netbox_mcp/ tests/                  # Lint code
+deactivate                                  # End session
+```
+
+#### **Virtual Environment Troubleshooting**
+
+```bash
+# Reset virtual environment if corrupted
+rm -rf venv/
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+
+# Check virtual environment status
+which python                               # Should show venv/bin/python
+pip list                                   # Show installed packages
+```
+
+**NOTE**: The `venv/` directory is already included in `.gitignore` to prevent accidental commits.
+
+### **3.2 Directory Structure**
 
   - **Main Git Repository**: `/Users/elvis/Developer/github/netbox-mcp`
   - **Repository Wiki (Documentation)**: `/Users/elvis/Developer/github/netbox-mcp.wiki`
   - **Live Testing Directory**: `/Developer/live-testing/netbox-mcp`
 
-### **3.2 Live Test Instance (NetBox Cloud)**
+### **3.3 Live Test Instance (NetBox Cloud)**
 
 The live testing directory is connected to a dedicated NetBox Cloud test instance. Use the following credentials to configure your local environment for testing.
 
@@ -881,7 +948,103 @@ Based on successful resolution of all 9 Gemini-identified issues:
 - **Maintainability**: Robust type parsing prevents future parsing errors
 - **Security**: Proactive identification and removal of security vulnerabilities
 
-### **8.5 Pre-commit Quality Assurance**
+### **8.5 GitHub Label Management**
+
+**IMPORTANT**: Before creating new GitHub labels, always check existing labels first to avoid duplicates and maintain consistency.
+
+#### **8.5.1 Checking Existing Labels**
+
+```bash
+# List all existing labels with colors and descriptions
+gh label list
+
+# Search for specific label patterns
+gh label list | grep -i "priority"
+gh label list | grep -i "complexity"
+gh label list | grep -i "enhancement"
+```
+
+#### **8.5.2 Current Label Categories**
+
+Based on existing repository labels:
+
+**🔥 Priority Labels:**
+- `priority-high` - Critical features for milestone completion (#b60205 - red)
+- `priority-medium` - Important but not blocking (#fbca04 - yellow)  
+- `priority-low` - Nice-to-have features (#0e8a16 - green)
+
+**⚙️ Complexity Labels:**
+- `complexity-high` - Complex implementation requiring careful design (#5319e7 - purple)
+- `complexity-medium` - Standard implementation complexity (#0052cc - blue)
+- `complexity-low` - Simple, straightforward implementation (#c5def5 - light blue)
+
+**🏷️ Feature Type Labels:**
+- `enhancement` - New feature or request (#a2eeef - light blue)
+- `feature` - New feature or enhancement (#0e8a16 - green)
+- `bug` - Something isn't working (#d73a4a - red)
+- `documentation` - Improvements or additions to documentation (#0075ca - blue)
+
+**🔒 Safety Labels:**
+- `safety-critical` - Security and safety-related features (#d73a49 - red)
+- `read-only` - Read-only functionality implementation (#0075ca - blue)
+- `read-write` - Write operation functionality (requires safety review) (#d93f0b - orange)
+
+**🏗️ Domain Labels:**
+- `dcim` - DCIM domain related (#d93f0b - orange)
+- `integration` - Unimus-NetBox integration workflows (#7057ff - purple)
+- `performance` - Performance optimization and caching (#e4e669 - yellow)
+- `testing` - Test implementation and coverage (#d4c5f9 - light purple)
+
+#### **8.5.3 Creating New Labels**
+
+**ONLY create new labels if they don't exist in similar form:**
+
+```bash
+# Create a new label with description and color
+gh label create "label-name" --description "Label description" --color "hexcolor"
+
+# Examples of properly formatted new labels
+gh label create "ipam" --description "IPAM domain related issues" --color "0e8a16"
+gh label create "api-breaking" --description "Changes that break API compatibility" --color "d73a4a"
+gh label create "performance-critical" --description "Performance issues affecting user experience" --color "b60205"
+```
+
+#### **8.5.4 Label Usage Guidelines**
+
+**✅ BEST PRACTICES:**
+- Always check existing labels first: `gh label list | grep -i "keyword"`
+- Use existing labels when possible to maintain consistency
+- Follow established color schemes:
+  - Red (#d73a4a, #b60205) - Critical/urgent issues
+  - Orange (#d93f0b) - Write operations/warnings  
+  - Yellow (#fbca04, #e4e669) - Medium priority/performance
+  - Green (#0e8a16) - Low priority/features
+  - Blue (#0075ca, #0052cc) - Documentation/standard complexity
+  - Purple (#7057ff, #5319e7) - High complexity/integrations
+
+**❌ AVOID:**
+- Creating duplicate labels with slightly different names
+- Using arbitrary colors that don't follow the established scheme
+- Creating overly specific labels that won't be reused
+
+#### **8.5.5 Issue Labeling Strategy**
+
+**Standard Label Combinations:**
+```bash
+# New feature development
+priority-medium + enhancement + complexity-medium + dcim
+
+# Critical bug fix
+priority-high + bug + safety-critical
+
+# Documentation improvement  
+priority-low + documentation + complexity-low
+
+# Performance optimization
+priority-medium + performance + enhancement + complexity-high
+```
+
+### **8.6 Pre-commit Quality Assurance**
 
 **Pre-commit Quality Checks:**
 ```bash
