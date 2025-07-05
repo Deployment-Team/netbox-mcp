@@ -333,11 +333,19 @@ class MetricsCollector:
         self._stop_event.clear()
         
         # Start collection in background
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            self._collection_task = loop.create_task(self._collection_loop())
-        else:
-            asyncio.run(self._collection_loop())
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                self._collection_task = loop.create_task(self._collection_loop())
+            else:
+                # This should be started from an async context where the loop is already running
+                # For example, in a FastAPI startup event or ASGI server startup
+                raise RuntimeError("MetricsCollector must be started from a running event loop. "
+                                 "Start the collector from an async context like a FastAPI startup event.")
+        except RuntimeError as e:
+            logger.error(f"Failed to start metrics collection: {e}")
+            self.is_running = False
+            raise
         
         logger.info("Metrics collection started")
     
