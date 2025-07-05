@@ -9,6 +9,7 @@ for all 142+ tools.
 import json
 import yaml
 import logging
+import time
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union, get_type_hints, get_origin, get_args
 from dataclasses import dataclass
@@ -196,16 +197,28 @@ class OpenAPIGenerator:
         self.config = config or OpenAPIConfig()
         self._schemas = {}
         self._paths = {}
+        self._cached_spec = None
+        self._cache_timestamp = None
+        self._cache_ttl = 300  # 5 minutes cache TTL
         
         logger.info(f"OpenAPI generator initialized for {self.config.title}")
     
     def generate_spec(self) -> Dict[str, Any]:
         """
-        Generate complete OpenAPI specification.
+        Generate complete OpenAPI specification with caching.
         
         Returns:
             OpenAPI 3.0 specification dictionary
         """
+        current_time = time.time()
+        
+        # Check if we have a valid cached spec
+        if (self._cached_spec is not None and 
+            self._cache_timestamp is not None and 
+            current_time - self._cache_timestamp < self._cache_ttl):
+            logger.debug("Returning cached OpenAPI specification")
+            return self._cached_spec
+        
         logger.info("Generating OpenAPI specification...")
         
         # Get all tools from registry
@@ -226,9 +239,81 @@ class OpenAPIGenerator:
         if self.config.include_security:
             spec["security"] = [{"bearerAuth": []}]
         
-        logger.info(f"Generated OpenAPI spec with {len(spec['paths'])} paths and {len(spec['components']['schemas'])} schemas")
+        # Cache the generated spec
+        self._cached_spec = spec
+        self._cache_timestamp = current_time
+        
+        logger.info(f"Generated and cached OpenAPI spec with {len(spec['paths'])} paths and {len(spec['components']['schemas'])} schemas")
         
         return spec
+    
+    def invalidate_cache(self):
+        """Invalidate the cached OpenAPI specification."""
+        self._cached_spec = None
+        self._cache_timestamp = None
+        logger.debug("OpenAPI specification cache invalidated")
+    
+    def _parse_type_string(self, type_str: str) -> Any:
+        """
+        Parse a type string into a Python type with enhanced robustness.
+        
+        Args:
+            type_str: String representation of the type
+            
+        Returns:
+            Corresponding Python type
+        """
+        if not isinstance(type_str, str):
+            return str
+            
+        # Clean the type string
+        type_str = type_str.strip()
+        
+        # Handle basic types
+        basic_types = {
+            "str": str,
+            "string": str,
+            "int": int,
+            "integer": int,
+            "bool": bool,
+            "boolean": bool,
+            "float": float,
+            "number": float,
+            "dict": dict,
+            "list": list,
+            "List": list,
+            "Dict": dict,
+        }
+        
+        if type_str in basic_types:
+            return basic_types[type_str]
+        
+        # Handle Optional types with improved parsing
+        if type_str.startswith("Optional[") and type_str.endswith("]"):
+            inner_type_str = type_str[9:-1]  # Remove "Optional[" and "]"
+            inner_type = self._parse_type_string(inner_type_str)
+            return Optional[inner_type]
+        
+        # Handle Union types
+        if type_str.startswith("Union[") and type_str.endswith("]"):
+            # For simplicity, return the first type in Union
+            inner_types_str = type_str[6:-1]  # Remove "Union[" and "]"
+            first_type = inner_types_str.split(",")[0].strip()
+            return self._parse_type_string(first_type)
+        
+        # Handle List types
+        if type_str.startswith("List[") and type_str.endswith("]"):
+            inner_type_str = type_str[5:-1]  # Remove "List[" and "]"
+            inner_type = self._parse_type_string(inner_type_str)
+            return List[inner_type]
+        
+        # Handle Dict types
+        if type_str.startswith("Dict[") and type_str.endswith("]"):
+            return dict
+        
+        # Handle complex types that we don't recognize
+        logger.debug(f"Unrecognized type string: '{type_str}', defaulting to str")
+        return str
     
     def _generate_info(self) -> Dict[str, Any]:
         """Generate OpenAPI info section."""
@@ -334,35 +419,17 @@ class OpenAPIGenerator:
             param_default = param.get("default")
             param_description = param.get("description", "")
             
-            # Convert Python type to OpenAPI schema
+            # Convert Python type to OpenAPI schema with robust parsing
             try:
-                # Try to get actual type from string representation
-                if param_type == "str":
-                    python_type = str
-                elif param_type == "int":
-                    python_type = int
-                elif param_type == "bool":
-                    python_type = bool
-                elif param_type == "float":
-                    python_type = float
-                elif "Optional[" in param_type:
-                    # Extract the inner type from Optional[T]
-                    inner_type = param_type.replace("Optional[", "").replace("]", "")
-                    if inner_type == "str":
-                        python_type = Optional[str]
-                    elif inner_type == "int":
-                        python_type = Optional[int]
-                    else:
-                        python_type = str
-                else:
-                    python_type = str
-                
+                python_type = self._parse_type_string(param_type)
                 schema = TypeConverter.python_type_to_openapi(python_type, self.config.include_examples)
                 
                 if schema is None:
                     continue  # Skip client parameters
                 
-            except Exception:
+            except Exception as e:
+                # Enhanced error logging for debugging
+                logger.warning(f"Failed to parse type '{param_type}' for parameter '{param_name}': {e}")
                 # Fallback schema
                 schema = {"type": "string"}
             
