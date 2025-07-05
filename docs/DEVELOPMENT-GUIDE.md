@@ -651,7 +651,237 @@ pytest tests/test_context_prompts.py -v         # 21 tests - Context prompts
 - Real NetBox API response simulation
 - Thread safety and concurrency testing
 
-### **7.2 Development Quality Assurance**
+## **8. Code Review and Quality Assurance Lessons Learned**
+
+### **8.1 AI Code Review Integration (Gemini Code Assist)**
+
+Based on systematic code review process during enterprise feature development (PR #90), the following critical lessons have been learned for maintaining enterprise-grade code quality:
+
+#### **8.1.1 AsyncIO and Event Loop Management**
+
+**❌ CRITICAL ERROR - Event Loop Blocking:**
+```python
+# WRONG - Blocks main thread and prevents server startup
+def start_collection(self):
+    if loop.is_running():
+        self._collection_task = loop.create_task(self._collection_loop())
+    else:
+        asyncio.run(self._collection_loop())  # ❌ BLOCKS THREAD
+```
+
+**✅ CORRECT - Enterprise Event Loop Handling:**
+```python
+# CORRECT - Requires running event loop with clear error guidance
+def start_collection(self):
+    if loop.is_running():
+        self._collection_task = loop.create_task(self._collection_loop())
+    else:
+        raise RuntimeError("MetricsCollector must be started from a running event loop. "
+                         "Start the collector from an async context like a FastAPI startup event.")
+```
+
+**Key Lesson**: Never use `asyncio.run()` in production server code - always require a running event loop with clear error messaging.
+
+#### **8.1.2 API Response Format Standardization**
+
+**❌ NON-STANDARD API Response:**
+```python
+# WRONG - Direct data return without wrapper
+"/api/v1/metrics": {
+    "schema": {
+        "type": "object", 
+        "properties": {
+            "timestamp": {"type": "string"},
+            "system_metrics": {"type": "object"}
+        }
+    }
+}
+```
+
+**✅ STANDARD Enterprise API Response:**
+```python
+# CORRECT - Consistent success/data wrapper format
+"/api/v1/metrics": {
+    "schema": {
+        "properties": {
+            "success": {"type": "boolean", "example": True},
+            "message": {"type": "string"},
+            "data": {
+                "properties": {
+                    "timestamp": {"type": "string"},
+                    "system_metrics": {"type": "object"}
+                }
+            }
+        },
+        "required": ["success", "data"]
+    }
+}
+```
+
+**Key Lesson**: All API endpoints must return standard `{success, message, data}` wrapper format for consistency.
+
+#### **8.1.3 Performance Optimization - Caching Strategies**
+
+**❌ INEFFICIENT - Generation on Every Request:**
+```python
+# WRONG - Regenerates expensive operations on every request
+def generate_spec(self) -> Dict[str, Any]:
+    # Expensive operation that runs every time
+    tools = list_tools()
+    spec = self._generate_paths(tools)  # CPU intensive
+    return spec
+```
+
+**✅ EFFICIENT - Intelligent Caching:**
+```python
+# CORRECT - Cached with TTL for performance
+def generate_spec(self) -> Dict[str, Any]:
+    current_time = time.time()
+    
+    # Check cache validity
+    if (self._cached_spec and 
+        current_time - self._cache_timestamp < self._cache_ttl):
+        return self._cached_spec
+    
+    # Generate and cache
+    spec = self._generate_expensive_operation()
+    self._cached_spec = spec
+    self._cache_timestamp = current_time
+    return spec
+```
+
+**Key Lesson**: Implement intelligent caching with TTL for expensive operations like OpenAPI generation.
+
+#### **8.1.4 Robust Type Parsing and Error Handling**
+
+**❌ BRITTLE - Simple String Replacement:**
+```python
+# WRONG - Fragile type parsing prone to errors
+if "Optional[" in param_type:
+    inner_type = param_type.replace("Optional[", "").replace("]", "")
+    # Breaks with nested types like Optional[Dict[str, int]]
+```
+
+**✅ ROBUST - Comprehensive Type Parser:**
+```python
+# CORRECT - Robust parsing with error handling
+def _parse_type_string(self, type_str: str) -> Any:
+    try:
+        # Handle nested brackets correctly
+        if type_str.startswith("Optional[") and type_str.endswith("]"):
+            inner_type_str = type_str[9:-1]
+            return Optional[self._parse_type_string(inner_type_str)]
+        # Handle other complex types...
+    except Exception as e:
+        logger.warning(f"Failed to parse type '{type_str}': {e}")
+        return str  # Safe fallback
+```
+
+**Key Lesson**: Implement robust parsing with recursive handling and comprehensive error logging.
+
+#### **8.1.5 NetBox API Filter Parameter Validation**
+
+**❌ CRITICAL BUG - Incorrect Filter Parameters:**
+```python
+# WRONG - Incorrect NetBox API filter parameter
+if site_name:
+    filter_params["device__site_id"] = site_id  # ❌ Wrong field
+```
+
+**✅ CORRECT - NetBox API Compliant Filters:**
+```python
+# CORRECT - Use actual NetBox API filter parameters
+if site_name:
+    filter_params["site_id"] = site_id  # ✅ Correct field
+```
+
+**Key Lesson**: Always validate filter parameters against NetBox API documentation - incorrect filters cause silent failures.
+
+### **8.2 Code Review Process Best Practices**
+
+#### **8.2.1 Systematic Issue Resolution**
+
+**PROVEN METHODOLOGY** from PR #90 (9/9 issues resolved):
+
+1. **Categorize by Priority**: High → Medium → Low
+2. **Address in Order**: Fix critical issues first
+3. **Test Each Fix**: Validate resolution before moving to next
+4. **Document Changes**: Clear commit messages with context
+5. **Request Re-review**: Confirm all issues addressed
+
+#### **8.2.2 Enterprise Safety Validation**
+
+**MANDATORY PRE-COMMIT CHECKS:**
+```bash
+# 1. Validate NetBox API compliance
+grep -r "device__site_id" netbox_mcp/  # Should be "site_id"
+grep -r "asyncio.run" netbox_mcp/      # Should not exist in server code
+
+# 2. Validate API response formats  
+grep -A5 "responses.*200" netbox_mcp/openapi_generator.py | grep -q "success.*data"
+
+# 3. Validate caching implementation
+grep -r "_cached_" netbox_mcp/ | grep -q "timestamp.*ttl"
+```
+
+#### **8.2.3 Documentation Accuracy Requirements**
+
+**❌ CRITICAL - Inaccurate Statistics:**
+```markdown
+**Total Test Count**: 8/21 tests passing (38% success rate)
+```
+
+**✅ ACCURATE - Real Statistics:**
+```markdown
+**Total Test Count**: 205 tests successfully collected
+**Test Categories**: Unit tests, integration tests, performance tests
+```
+
+**Key Lesson**: Always update documentation with actual metrics - inaccurate stats undermine credibility.
+
+### **8.3 AI-Assisted Development Guidelines**
+
+#### **8.3.1 Leveraging AI Code Review**
+
+**BEST PRACTICES** for Gemini Code Assist integration:
+
+1. **Request Specific Reviews**: Use `/gemini review` for targeted feedback
+2. **Address All Issues**: Systematically resolve each identified problem  
+3. **Ask for Re-review**: Confirm fixes with `@gemini-code-assist please review latest commits`
+4. **Learn from Patterns**: Document recurring issues for future prevention
+
+#### **8.3.2 Human-AI Collaboration Workflow**
+
+**PROVEN PROCESS:**
+1. **Human**: Implement features following established patterns
+2. **AI**: Identify issues, security concerns, and optimization opportunities  
+3. **Human**: Systematically address all feedback with proper fixes
+4. **AI**: Validate fixes and provide final approval
+5. **Human**: Document lessons learned for future development
+
+**Key Lesson**: AI code review is most effective when combined with systematic human response to feedback.
+
+### **8.4 Enterprise Code Quality Standards**
+
+Based on successful resolution of all 9 Gemini-identified issues:
+
+#### **8.4.1 Non-Negotiable Requirements**
+
+1. **Event Loop Safety**: Never block event loops in server code
+2. **API Consistency**: Always use standard response wrapper formats
+3. **Performance Optimization**: Implement caching for expensive operations
+4. **Error Handling**: Comprehensive logging with fallback strategies
+5. **Documentation Accuracy**: Real metrics and up-to-date information
+
+#### **8.4.2 Code Review Success Metrics**
+
+- **Issue Resolution Rate**: 100% (9/9 issues resolved in PR #90)
+- **Review Cycles**: 3 systematic review rounds with clear progress
+- **Performance Impact**: 5-minute caching reduced API generation overhead
+- **Maintainability**: Robust type parsing prevents future parsing errors
+- **Security**: Proactive identification and removal of security vulnerabilities
+
+### **8.5 Pre-commit Quality Assurance**
 
 **Pre-commit Quality Checks:**
 ```bash
@@ -679,7 +909,7 @@ curl -s http://localhost:8000/api/v1/health/detailed | jq .
 curl -s http://localhost:8000/api/v1/openapi.json > /tmp/api-spec.json
 ```
 
-### **7.3 Codebase Pattern Validation**
+## **9. Codebase Pattern Validation**
 
 **CRITICAL**: Before implementing any UPDATE or DELETE operations, ALWAYS validate against existing working functions to ensure consistent patterns.
 
@@ -725,7 +955,7 @@ client.dcim.inventory_items.update(item_id, confirm=confirm, **update_payload)
 client.dcim.inventory_items.delete(item_id, confirm=confirm)
 ```
 
-### **7.2 Testing Protocol**
+### **9.1 Testing Protocol**
 
 **IMPORTANT**: NetBox MCP development now uses a **dedicated test team** for comprehensive functional testing. Developers are responsible for **code-level validation only**.
 
