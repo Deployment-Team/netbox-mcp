@@ -682,17 +682,37 @@ class HealthCheck:
                     "timestamp": datetime.now().isoformat()
                 }
             
-            # This would call the actual NetBox client health check
-            # For now, return a placeholder
-            return {
-                "status": "healthy",
-                "message": "NetBox connectivity normal",
-                "details": {
-                    "connected": True,
-                    "response_time": 0.1
-                },
-                "timestamp": datetime.now().isoformat()
-            }
+            # Perform an actual health check using the client
+            import time
+            start_time = time.time()
+            
+            try:
+                # Try to fetch a small amount of data to test connectivity
+                sites = self.netbox_client.dcim.sites.filter(limit=1)
+                response_time_ms = round((time.time() - start_time) * 1000, 2)
+                
+                return {
+                    "status": "healthy",
+                    "message": "NetBox connectivity normal",
+                    "details": {
+                        "connected": True,
+                        "response_time_ms": response_time_ms,
+                        "test_endpoint": "dcim.sites"
+                    },
+                    "timestamp": datetime.now().isoformat()
+                }
+            except Exception as conn_error:
+                response_time_ms = round((time.time() - start_time) * 1000, 2)
+                return {
+                    "status": "critical",
+                    "message": f"NetBox connectivity failed: {str(conn_error)}",
+                    "details": {
+                        "connected": False,
+                        "response_time_ms": response_time_ms,
+                        "error": str(conn_error)
+                    },
+                    "timestamp": datetime.now().isoformat()
+                }
             
         except Exception as e:
             return {

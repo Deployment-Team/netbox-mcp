@@ -390,7 +390,7 @@ def netbox_list_all_power_ports(
             if sites:
                 site_obj = sites[0]
                 site_id = site_obj.get('id') if isinstance(site_obj, dict) else site_obj.id
-                filter_params["device__site_id"] = site_id
+                filter_params["site_id"] = site_id
             else:
                 return {
                     "success": True,
@@ -407,8 +407,8 @@ def netbox_list_all_power_ports(
     if device_name:
         try:
             device_filter = {"name": device_name}
-            if "device__site_id" in filter_params:
-                device_filter["site_id"] = filter_params["device__site_id"]
+            if "site_id" in filter_params:
+                device_filter["site_id"] = filter_params["site_id"]
             
             devices = client.dcim.devices.filter(**device_filter)
             if devices:

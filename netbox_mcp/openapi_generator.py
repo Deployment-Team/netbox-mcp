@@ -163,7 +163,9 @@ class TypeConverter:
             r"Valid options?:\s*([^.]+)",
             r"Choices?:\s*([^.]+)",
             r"Must be one of:\s*([^.]+)",
-            r"\(([^)]+)\)"  # Values in parentheses
+            r"\(e\.g\.?,?\s*([^)]+)\)",  # More specific pattern for examples in parentheses
+            r"Options:\s*([^.]+)",
+            r"Available:\s*([^.]+)"
         ]
         
         for pattern in enum_patterns:
@@ -173,8 +175,9 @@ class TypeConverter:
                 # Split by comma and clean up
                 values = [v.strip().strip('"\'') for v in values_str.split(',')]
                 # Filter out empty strings and common non-enum words
-                values = [v for v in values if v and v.lower() not in ['etc', 'and', 'or']]
-                if values:
+                values = [v for v in values if v and len(v) > 1 and v.lower() not in ['etc', 'and', 'or', 'optional', 'required', 'watts', 'in']]
+                # Reasonable limit to avoid false positives
+                if values and len(values) <= 20:
                     return values
         
         return None
@@ -625,11 +628,50 @@ class OpenAPIGenerator:
                                     "schema": {
                                         "type": "object",
                                         "properties": {
-                                            "timestamp": {"type": "string"},
-                                            "system_metrics": {"type": "object"},
-                                            "operation_metrics": {"type": "array"},
-                                            "cache_metrics": {"type": "object"}
-                                        }
+                                            "success": {
+                                                "type": "boolean",
+                                                "example": True
+                                            },
+                                            "message": {
+                                                "type": "string",
+                                                "example": "Performance metrics retrieved successfully"
+                                            },
+                                            "data": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "timestamp": {"type": "string", "example": "2025-07-05T10:30:00Z"},
+                                                    "system_metrics": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "cpu_usage": {"type": "number", "example": 15.2},
+                                                            "memory_usage": {"type": "number", "example": 2048.5},
+                                                            "active_connections": {"type": "integer", "example": 25}
+                                                        }
+                                                    },
+                                                    "operation_metrics": {
+                                                        "type": "array",
+                                                        "items": {
+                                                            "type": "object",
+                                                            "properties": {
+                                                                "operation_name": {"type": "string"},
+                                                                "total_executions": {"type": "integer"},
+                                                                "success_rate": {"type": "number"},
+                                                                "average_duration": {"type": "number"}
+                                                            }
+                                                        }
+                                                    },
+                                                    "cache_metrics": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "hit_ratio": {"type": "number", "example": 0.85},
+                                                            "cache_size_mb": {"type": "number", "example": 128.5},
+                                                            "total_requests": {"type": "integer", "example": 1500}
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "required": ["success", "data"]
                                     }
                                 }
                             }
