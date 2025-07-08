@@ -21,6 +21,17 @@ class TestCableColorSupport:
         """Setup test client and mock data."""
         self.mock_client = Mock(spec=NetBoxClient)
         
+        # Create mock dcim namespace
+        self.mock_client.dcim = Mock()
+        self.mock_client.dcim.devices = Mock()
+        self.mock_client.dcim.interfaces = Mock()
+        self.mock_client.dcim.cables = Mock()
+        
+        # Create mock cache
+        self.mock_client.cache = Mock()
+        self.mock_client.cache.invalidate_for_object = Mock()
+        self.mock_client.cache.invalidate_pattern = Mock()
+        
         # Mock device and interface data
         self.mock_device_a = {
             'id': 1, 'name': 'server-01',
@@ -103,9 +114,10 @@ class TestCableColorSupport:
         assert result["action"] == "created"
         
         # Verify cable creation was called with color
-        create_args = self.mock_client.dcim.cables.create.call_args[0][0]
-        assert create_args["color"] == "pink"
-        assert create_args["type"] == "cat6"
+        call_args = self.mock_client.dcim.cables.create.call_args
+        create_kwargs = call_args[1]  # Keyword arguments
+        assert create_kwargs["color"] == "pink"
+        assert create_kwargs["type"] == "cat6"
         
         # Verify response includes color
         cable_info = result["cable"]
@@ -145,8 +157,9 @@ class TestCableColorSupport:
             assert result["action"] == "created"
             
             # Verify color was passed to NetBox
-            create_args = self.mock_client.dcim.cables.create.call_args[0][0]
-            assert create_args["color"] == color
+            call_args = self.mock_client.dcim.cables.create.call_args
+            create_kwargs = call_args[1]  # Keyword arguments
+            assert create_kwargs["color"] == color
     
     def test_cable_creation_without_color(self):
         """Test cable creation without color parameter."""
@@ -167,8 +180,9 @@ class TestCableColorSupport:
         assert result["action"] == "created"
         
         # Verify no color was passed to NetBox
-        create_args = self.mock_client.dcim.cables.create.call_args[0][0]
-        assert "color" not in create_args
+        call_args = self.mock_client.dcim.cables.create.call_args
+        create_kwargs = call_args[1]  # Keyword arguments
+        assert "color" not in create_kwargs
     
     def test_cable_creation_with_none_color(self):
         """Test cable creation with None color parameter."""
@@ -189,8 +203,9 @@ class TestCableColorSupport:
         assert result["action"] == "created"
         
         # Verify no color was passed to NetBox
-        create_args = self.mock_client.dcim.cables.create.call_args[0][0]
-        assert "color" not in create_args
+        call_args = self.mock_client.dcim.cables.create.call_args
+        create_kwargs = call_args[1]  # Keyword arguments
+        assert "color" not in create_kwargs
     
     def test_cable_creation_with_invalid_color(self):
         """Test cable creation with invalid color."""
@@ -252,8 +267,9 @@ class TestCableColorSupport:
             assert result["success"] is True, f"Failed for input color: {input_color}"
             
             # Verify color was normalized to lowercase
-            create_args = self.mock_client.dcim.cables.create.call_args[0][0]
-            assert create_args["color"] == expected_color
+            call_args = self.mock_client.dcim.cables.create.call_args
+            create_kwargs = call_args[1]  # Keyword arguments
+            assert create_kwargs["color"] == expected_color
     
     def test_cable_creation_dry_run_with_color(self):
         """Test cable creation dry run with color parameter."""
@@ -275,9 +291,9 @@ class TestCableColorSupport:
         assert result["dry_run"] is True
         
         # Verify cable preview includes color
-        cable_preview = result["cable_preview"]
-        assert cable_preview["cable_color"] == "pink"
-        assert cable_preview["cable_type"] == "cat6"
+        cable_preview = result["cable"]
+        assert cable_preview["color"] == "pink"
+        assert cable_preview["type"] == "cat6"
         
         # Verify no actual cable was created
         assert not self.mock_client.dcim.cables.create.called
@@ -305,13 +321,14 @@ class TestCableColorSupport:
         assert result["action"] == "created"
         
         # Verify all parameters were passed correctly
-        create_args = self.mock_client.dcim.cables.create.call_args[0][0]
-        assert create_args["type"] == "cat6a"
-        assert create_args["color"] == "orange"
-        assert create_args["length"] == 10
-        assert create_args["length_unit"] == "m"
-        assert create_args["label"] == "Orange Uplink Cable"
-        assert create_args["description"] == "Server to switch uplink"
+        call_args = self.mock_client.dcim.cables.create.call_args
+        create_kwargs = call_args[1]  # Keyword arguments
+        assert create_kwargs["type"] == "cat6a"
+        assert create_kwargs["color"] == "orange"
+        assert create_kwargs["length"] == 10
+        assert create_kwargs["length_unit"] == "m"
+        assert create_kwargs["label"] == "Orange Uplink Cable"
+        assert create_kwargs["description"] == "Server to switch uplink"
     
     def test_cable_color_validation_edge_cases(self):
         """Test edge cases for cable color validation."""
@@ -406,6 +423,17 @@ class TestCableColorIntegration:
     def setup_method(self):
         """Setup test client."""
         self.mock_client = Mock(spec=NetBoxClient)
+        
+        # Create mock dcim namespace
+        self.mock_client.dcim = Mock()
+        self.mock_client.dcim.devices = Mock()
+        self.mock_client.dcim.interfaces = Mock()
+        self.mock_client.dcim.cables = Mock()
+        
+        # Create mock cache
+        self.mock_client.cache = Mock()
+        self.mock_client.cache.invalidate_for_object = Mock()
+        self.mock_client.cache.invalidate_pattern = Mock()
     
     def test_cable_color_validation_function(self):
         """Test the cable color validation function directly."""

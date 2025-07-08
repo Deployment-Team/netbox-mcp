@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 from ...registry import mcp_tool
 from ...client import NetBoxClient
+from ...validation import CableValidator
 
 logger = logging.getLogger(__name__)
 
@@ -84,18 +85,13 @@ def netbox_create_cable_connection(
                 "error_type": "ValidationError"
             }
         
-        # Validate cable type
-        valid_cable_types = [
-            "cat3", "cat5", "cat5e", "cat6", "cat6a", "cat7", "cat8",
-            "dac-active", "dac-passive", "mrj21-trunk", "coaxial", 
-            "mmf", "mmf-om1", "mmf-om2", "mmf-om3", "mmf-om4", "mmf-om5",
-            "smf", "smf-os1", "smf-os2", "aoc", "power", "usb"
-        ]
-        
-        if cable_type not in valid_cable_types:
+        # Validate cable type using shared validator
+        try:
+            cable_type = CableValidator.validate_type(cable_type)
+        except Exception as e:
             return {
                 "success": False,
-                "error": f"Invalid cable_type '{cable_type}'. Valid types: {valid_cable_types}",
+                "error": str(e),
                 "error_type": "ValidationError"
             }
         
@@ -117,19 +113,15 @@ def netbox_create_cable_connection(
                 "error_type": "ValidationError"
             }
         
-        # Validate cable color
-        if cable_color:
-            valid_colors = [
-                "pink", "red", "blue", "green", "yellow", "orange", 
-                "purple", "grey", "black", "white", "brown", "cyan", 
-                "magenta", "lime", "silver", "gold"
-            ]
-            if cable_color.lower() not in valid_colors:
-                return {
-                    "success": False,
-                    "error": f"Invalid cable_color '{cable_color}'. Valid colors: {valid_colors}",
-                    "error_type": "ValidationError"
-                }
+        # Validate cable color using shared validator
+        try:
+            cable_color = CableValidator.validate_color(cable_color)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": "ValidationError"
+            }
         
         logger.info(f"Creating cable connection: {device_a_name}:{interface_a_name} <-> {device_b_name}:{interface_b_name}")
         
@@ -238,7 +230,7 @@ def netbox_create_cable_connection(
         if description:
             cable_data["description"] = description
         if cable_color:
-            cable_data["color"] = cable_color.lower()
+            cable_data["color"] = cable_color
         
         logger.info(f"Creating cable with termination IDs - A: {interface_a_id}, B: {interface_b_id}")
         logger.debug(f"Full cable payload: {cable_data}")
@@ -865,18 +857,13 @@ def netbox_bulk_create_cable_connections(
                     "error_type": "ValidationError"
                 }
         
-        # Validate cable parameters (reuse validation from single cable tool)
-        valid_cable_types = [
-            "cat3", "cat5", "cat5e", "cat6", "cat6a", "cat7", "cat8",
-            "dac-active", "dac-passive", "mrj21-trunk", "coaxial", 
-            "mmf", "mmf-om1", "mmf-om2", "mmf-om3", "mmf-om4", "mmf-om5",
-            "smf", "smf-os1", "smf-os2", "aoc", "power", "usb"
-        ]
-        
-        if cable_type not in valid_cable_types:
+        # Validate cable parameters using shared validator
+        try:
+            cable_type = CableValidator.validate_type(cable_type)
+        except Exception as e:
             return {
                 "success": False,
-                "error": f"Invalid cable_type '{cable_type}'. Valid types: {valid_cable_types}",
+                "error": str(e),
                 "error_type": "ValidationError"
             }
         
@@ -888,18 +875,14 @@ def netbox_bulk_create_cable_connections(
                 "error_type": "ValidationError"
             }
         
-        if cable_color:
-            valid_colors = [
-                "pink", "red", "blue", "green", "yellow", "orange", 
-                "purple", "grey", "black", "white", "brown", "cyan", 
-                "magenta", "lime", "silver", "gold"
-            ]
-            if cable_color.lower() not in valid_colors:
-                return {
-                    "success": False,
-                    "error": f"Invalid cable_color '{cable_color}'. Valid colors: {valid_colors}",
-                    "error_type": "ValidationError"
-                }
+        try:
+            cable_color = CableValidator.validate_color(cable_color)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": "ValidationError"
+            }
         
         logger.info(f"Starting bulk cable creation: {len(cable_connections)} connections, batch_size={batch_size}")
         

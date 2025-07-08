@@ -10,8 +10,10 @@ structured cabling and bulk infrastructure operations.
 from typing import Dict, Optional, Any, List
 import logging
 import re
+from datetime import datetime
 from ...registry import mcp_tool
 from ...client import NetBoxClient
+from ...validation import CableValidator
 
 logger = logging.getLogger(__name__)
 
@@ -379,38 +381,21 @@ def netbox_generate_bulk_cable_plan(
         else:
             cable_connections = mapping_result["mapping_proposal"]["mappings"]
         
-        # Validate cable parameters
-        valid_cable_types = [
-            "cat3", "cat5", "cat5e", "cat6", "cat6a", "cat7", "cat8",
-            "dac-active", "dac-passive", "mrj21-trunk", "coaxial", 
-            "mmf", "mmf-om1", "mmf-om2", "mmf-om3", "mmf-om4", "mmf-om5",
-            "smf", "smf-os1", "smf-os2", "aoc", "power", "usb"
-        ]
-        
-        if cable_type not in valid_cable_types:
+        # Validate cable parameters using shared validator
+        try:
+            cable_type = CableValidator.validate_type(cable_type)
+            cable_color = CableValidator.validate_color(cable_color)
+        except Exception as e:
             return {
                 "success": False,
-                "error": f"Invalid cable_type '{cable_type}'. Valid types: {valid_cable_types}",
+                "error": str(e),
                 "error_type": "ValidationError"
             }
-        
-        if cable_color:
-            valid_colors = [
-                "pink", "red", "blue", "green", "yellow", "orange", 
-                "purple", "grey", "black", "white", "brown", "cyan", 
-                "magenta", "lime", "silver", "gold"
-            ]
-            if cable_color.lower() not in valid_colors:
-                return {
-                    "success": False,
-                    "error": f"Invalid cable_color '{cable_color}'. Valid colors: {valid_colors}",
-                    "error_type": "ValidationError"
-                }
         
         # Create the bulk cable plan
         bulk_cable_plan = {
             "plan_type": "bulk_cable_installation",
-            "generated_at": "2025-01-08T12:00:00Z",  # Would be datetime.now().isoformat() in real implementation
+            "generated_at": datetime.now().isoformat(),
             "source_rack": rack_name,
             "target_switch": switch_name,
             "cable_specifications": {
