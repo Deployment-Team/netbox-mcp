@@ -83,15 +83,44 @@ def netbox_bulk_cable_interfaces_to_switch(
             name=interface_name
         )
         
-        # Filter manually for available interfaces (no cable)
+        # DEFENSIVE VALIDATION: Verify devices are actually in the specified rack
+        # This prevents the critical bug where API filters return wrong devices
         rack_interfaces = []
-        for interface in all_rack_interfaces:
-            interface_cable = interface.get('cable') if isinstance(interface, dict) else interface.cable
-            if not interface_cable:  # Only available interfaces
-                rack_interfaces.append(interface)
+        skipped_devices = []
         
-        logger.info(f"Found {len(all_rack_interfaces)} total '{interface_name}' interfaces in rack '{rack_name}'")
-        logger.info(f"Filtered to {len(rack_interfaces)} available interfaces")
+        for interface in all_rack_interfaces:
+            # Get device information with defensive handling
+            device = interface.get('device') if isinstance(interface, dict) else interface.device
+            
+            # Handle device being int ID, dict, or object
+            if isinstance(device, int):
+                device_obj = client.dcim.devices.get(device)
+                device_name = device_obj.get('name') if isinstance(device_obj, dict) else device_obj.name
+                actual_rack = device_obj.get('rack', {}).get('name') if isinstance(device_obj, dict) else (device_obj.rack.name if device_obj.rack else None)
+            elif isinstance(device, dict):
+                device_name = device.get('name', f'device-{device.get("id", "unknown")}')
+                actual_rack = device.get('rack', {}).get('name') if device.get('rack') else None
+            else:
+                device_name = getattr(device, 'name', f'device-{getattr(device, "id", "unknown")}')
+                actual_rack = device.rack.name if device.rack else None
+            
+            # CRITICAL CHECK: Only include devices that are ACTUALLY in the specified rack
+            if actual_rack == rack_name:
+                interface_cable = interface.get('cable') if isinstance(interface, dict) else interface.cable
+                if not interface_cable:  # Only available interfaces
+                    rack_interfaces.append(interface)
+                    logger.debug(f"✅ Including {device_name}:{interface_name} (actually in rack {actual_rack})")
+                else:
+                    logger.debug(f"⚠️  Skipping {device_name}:{interface_name} (already connected)")
+            else:
+                skipped_devices.append(f"{device_name} (in {actual_rack})")
+                logger.warning(f"❌ RACK MISMATCH: {device_name} returned by rack filter but is in '{actual_rack}', not '{rack_name}'")
+        
+        logger.info(f"Found {len(all_rack_interfaces)} total '{interface_name}' interfaces from rack filter")
+        logger.info(f"Validated {len(rack_interfaces)} interfaces actually in rack '{rack_name}'")
+        
+        if skipped_devices:
+            logger.warning(f"Skipped {len(skipped_devices)} devices not in rack '{rack_name}': {', '.join(skipped_devices)}")
         
         if not rack_interfaces:
             return {
@@ -103,10 +132,39 @@ def netbox_bulk_cable_interfaces_to_switch(
         # OPTIMIZATION 2: Single API call to get all switch ports
         # Note: Don't use cable__isnull=True here as it may be inconsistent
         # Instead, filter manually after retrieval for reliability
-        all_switch_ports = client.dcim.interfaces.filter(
-            device__name=switch_name,
-            name__istartswith=switch_port_pattern  # Use configurable pattern
+        # IMPORTANT: Filter by name pattern manually due to NetBox API issues
+        all_device_ports = client.dcim.interfaces.filter(
+            device__name=switch_name
         )
+        
+        # DEFENSIVE VALIDATION: Verify switch device exists and get its actual rack
+        switch_device = None
+        switch_actual_rack = None
+        
+        if all_device_ports:
+            # Get the device from the first interface to validate switch location
+            first_port = all_device_ports[0]
+            device = first_port.get('device') if isinstance(first_port, dict) else first_port.device
+            
+            # Handle device being int ID, dict, or object
+            if isinstance(device, int):
+                switch_device = client.dcim.devices.get(device)
+                switch_actual_rack = switch_device.get('rack', {}).get('name') if isinstance(switch_device, dict) else (switch_device.rack.name if switch_device.rack else None)
+            elif isinstance(device, dict):
+                switch_device = device
+                switch_actual_rack = device.get('rack', {}).get('name') if device.get('rack') else None
+            else:
+                switch_device = device
+                switch_actual_rack = device.rack.name if device.rack else None
+                
+            logger.info(f"Switch '{switch_name}' is located in rack '{switch_actual_rack}'")
+        
+        # Filter manually for ports matching the pattern
+        all_switch_ports = []
+        for port in all_device_ports:
+            port_name = port.get('name') if isinstance(port, dict) else port.name
+            if port_name and port_name.startswith(switch_port_pattern):
+                all_switch_ports.append(port)
         
         # Filter manually for available ports (no cable)
         switch_ports = []
@@ -115,7 +173,7 @@ def netbox_bulk_cable_interfaces_to_switch(
             if not port_cable:  # Only available ports
                 switch_ports.append(port)
         
-        logger.info(f"Found {len(all_switch_ports)} total switch ports on '{switch_name}'")
+        logger.info(f"Found {len(all_switch_ports)} total switch ports on '{switch_name}' (rack: {switch_actual_rack})")
         logger.info(f"Filtered to {len(switch_ports)} available ports")
         
         if not switch_ports:
@@ -175,15 +233,27 @@ def netbox_bulk_cable_interfaces_to_switch(
                     device_name = getattr(device, 'name', f'device-{getattr(device, "id", "unknown")}')
                 
                 rack_interface_name = rack_interface.get('name') if isinstance(rack_interface, dict) else rack_interface.name
-                switch_port_name = switch_ports_sorted[i].get('name') if isinstance(switch_ports_sorted[i], dict) else switch_ports_sorted[i].name
+                rack_interface_id = rack_interface.get('id') if isinstance(rack_interface, dict) else rack_interface.id
+                
+                switch_port = switch_ports_sorted[i]
+                switch_port_name = switch_port.get('name') if isinstance(switch_port, dict) else switch_port.name
+                switch_port_id = switch_port.get('id') if isinstance(switch_port, dict) else switch_port.id
+                
+                # DEBUG: Log the mapping
+                logger.info(f"Mapping {i}: {device_name}:{rack_interface_name} (ID:{rack_interface_id}) -> {switch_name}:{switch_port_name} (ID:{switch_port_id})")
+                
+                # Validation check to prevent same object connection
+                if rack_interface_id == switch_port_id:
+                    logger.error(f"CRITICAL: Same interface ID detected! rack_id={rack_interface_id}, switch_id={switch_port_id}")
+                    continue
                 
                 cable_connections.append({
                     "device_a_name": device_name,
                     "interface_a_name": rack_interface_name,
                     "device_b_name": switch_name,
                     "interface_b_name": switch_port_name,
-                    "rack_interface_id": rack_interface.get('id') if isinstance(rack_interface, dict) else rack_interface.id,
-                    "switch_port_id": switch_ports_sorted[i].get('id') if isinstance(switch_ports_sorted[i], dict) else switch_ports_sorted[i].id
+                    "rack_interface_id": rack_interface_id,
+                    "switch_port_id": switch_port_id
                 })
         
         if not confirm:
@@ -320,22 +390,61 @@ def netbox_count_interfaces_in_rack(
             name=interface_name
         )
         
-        if not all_interfaces:
+        # DEFENSIVE VALIDATION: Verify devices are actually in the specified rack
+        # This prevents the critical bug where API filters return wrong devices
+        validated_interfaces = []
+        skipped_devices = []
+        
+        for interface in all_interfaces:
+            device = interface.get('device') if isinstance(interface, dict) else interface.device
+            
+            # Handle device being int ID, dict, or object
+            if isinstance(device, int):
+                device_obj = client.dcim.devices.get(device)
+                device_name = device_obj.get('name') if isinstance(device_obj, dict) else device_obj.name
+                actual_rack = device_obj.get('rack', {}).get('name') if isinstance(device_obj, dict) else (device_obj.rack.name if device_obj.rack else None)
+            elif isinstance(device, dict):
+                device_name = device.get('name', f'device-{device.get("id", "unknown")}')
+                actual_rack = device.get('rack', {}).get('name') if device.get('rack') else None
+            else:
+                device_name = getattr(device, 'name', f'device-{getattr(device, "id", "unknown")}')
+                actual_rack = device.rack.name if device.rack else None
+            
+            # CRITICAL CHECK: Only include devices that are ACTUALLY in the specified rack
+            if actual_rack == rack_name:
+                validated_interfaces.append(interface)
+                logger.debug(f"✅ Including {device_name}:{interface_name} (actually in rack {actual_rack})")
+            else:
+                skipped_devices.append(f"{device_name} (in {actual_rack})")
+                logger.warning(f"❌ RACK MISMATCH: {device_name} returned by rack filter but is in '{actual_rack}', not '{rack_name}'")
+        
+        logger.info(f"Found {len(all_interfaces)} total '{interface_name}' interfaces from rack filter")
+        logger.info(f"Validated {len(validated_interfaces)} interfaces actually in rack '{rack_name}'")
+        
+        if skipped_devices:
+            logger.warning(f"Skipped {len(skipped_devices)} devices not in rack '{rack_name}': {', '.join(skipped_devices)}")
+        
+        if not validated_interfaces:
             return {
                 "success": True,
                 "count": 0,
                 "available": 0,
                 "unavailable": 0,
-                "message": f"No '{interface_name}' interfaces found in rack '{rack_name}'",
-                "devices": []
+                "message": f"No '{interface_name}' interfaces found in rack '{rack_name}' (after validation)",
+                "devices": [],
+                "validation_info": {
+                    "total_from_filter": len(all_interfaces),
+                    "validated_in_rack": len(validated_interfaces),
+                    "skipped_wrong_rack": len(skipped_devices)
+                }
             }
         
-        # Process results
+        # Process validated results
         available_count = 0
         unavailable_count = 0
         device_list = []
         
-        for interface in all_interfaces:
+        for interface in validated_interfaces:
             device = interface.get('device') if isinstance(interface, dict) else interface.device
             
             # Handle device being int ID, dict, or object
@@ -379,11 +488,16 @@ def netbox_count_interfaces_in_rack(
         
         return {
             "success": True,
-            "count": len(all_interfaces),
+            "count": len(validated_interfaces),
             "available": available_count,
             "unavailable": unavailable_count,
-            "message": f"Found {len(all_interfaces)} '{interface_name}' interfaces in rack '{rack_name}' ({available_count} available, {unavailable_count} connected)",
-            "devices": device_list
+            "message": f"Found {len(validated_interfaces)} '{interface_name}' interfaces in rack '{rack_name}' ({available_count} available, {unavailable_count} connected)",
+            "devices": device_list,
+            "validation_info": {
+                "total_from_filter": len(all_interfaces),
+                "validated_in_rack": len(validated_interfaces),
+                "skipped_wrong_rack": len(skipped_devices)
+            }
         }
         
     except Exception as e:
