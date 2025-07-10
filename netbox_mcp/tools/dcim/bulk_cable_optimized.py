@@ -85,6 +85,68 @@ def netbox_bulk_cable_interfaces_to_switch(
         
         # DEFENSIVE VALIDATION: Verify devices are actually in the specified rack
         # This prevents the critical bug where API filters return wrong devices
+        # PERFORMANCE OPTIMIZATION: Batch fetch devices to avoid N+1 queries
+        
+        # Step 1: Extract unique device IDs from interfaces
+        device_ids = set()
+        for interface in all_rack_interfaces:
+            device = interface.get('device') if isinstance(interface, dict) else interface.device
+            if isinstance(device, int):
+                device_ids.add(device)
+            elif isinstance(device, dict):
+                device_ids.add(device.get('id'))
+            else:
+                device_ids.add(getattr(device, 'id', None))
+        
+        # Remove None values if any
+        device_ids = {dev_id for dev_id in device_ids if dev_id is not None}
+        
+        # Step 2: BATCH FETCH all devices in a single API call
+        logger.debug(f"Batch fetching {len(device_ids)} devices to validate rack locations")
+        devices_batch = client.dcim.devices.filter(id__in=list(device_ids))
+        
+        # Step 2.5: Extract unique rack IDs and batch fetch racks
+        rack_ids = set()
+        for device in devices_batch:
+            if isinstance(device, dict):
+                rack_id = device.get('rack')
+                if rack_id:
+                    rack_ids.add(rack_id)
+            else:
+                rack_id = getattr(device, 'rack', None)
+                if rack_id:
+                    rack_ids.add(rack_id)
+        
+        # Batch fetch racks to get rack names
+        rack_lookup = {}
+        if rack_ids:
+            logger.debug(f"Batch fetching {len(rack_ids)} racks to get rack names")
+            racks_batch = client.dcim.racks.filter(id__in=list(rack_ids))
+            for rack in racks_batch:
+                if isinstance(rack, dict):
+                    rack_id = rack.get('id')
+                    rack_name = rack.get('name')
+                else:
+                    rack_id = getattr(rack, 'id', None)
+                    rack_name = getattr(rack, 'name', None)
+                if rack_id and rack_name:
+                    rack_lookup[rack_id] = rack_name
+        
+        # Step 3: Create device lookup map for O(1) access
+        device_lookup = {}
+        for device in devices_batch:
+            # Handle device being int ID, dict, or object
+            if isinstance(device, int):
+                device_id = device
+                device_lookup[device_id] = {'id': device}  # Minimal dict for consistency
+            elif isinstance(device, dict):
+                device_id = device.get('id')
+                device_lookup[device_id] = device
+            else:
+                device_id = getattr(device, 'id', None)
+                device_lookup[device_id] = device
+        
+        # Step 4: Process interfaces with batch-fetched device and rack data
         rack_interfaces = []
         skipped_devices = []
         
@@ -92,17 +154,29 @@ def netbox_bulk_cable_interfaces_to_switch(
             # Get device information with defensive handling
             device = interface.get('device') if isinstance(interface, dict) else interface.device
             
-            # Handle device being int ID, dict, or object
+            # Extract device ID for lookup
             if isinstance(device, int):
-                device_obj = client.dcim.devices.get(device)
-                device_name = device_obj.get('name') if isinstance(device_obj, dict) else device_obj.name
-                actual_rack = device_obj.get('rack', {}).get('name') if isinstance(device_obj, dict) else (device_obj.rack.name if device_obj.rack else None)
+                device_id = device
             elif isinstance(device, dict):
-                device_name = device.get('name', f'device-{device.get("id", "unknown")}')
-                actual_rack = device.get('rack', {}).get('name') if device.get('rack') else None
+                device_id = device.get('id')
             else:
-                device_name = getattr(device, 'name', f'device-{getattr(device, "id", "unknown")}')
-                actual_rack = device.rack.name if device.rack else None
+                device_id = getattr(device, 'id', None)
+            
+            # Get device from batch lookup (O(1) operation)
+            device_obj = device_lookup.get(device_id)
+            if not device_obj:
+                logger.warning(f"Device ID {device_id} not found in batch fetch - skipping interface")
+                continue
+            
+            # Extract device name and rack with defensive handling
+            if isinstance(device_obj, dict):
+                device_name = device_obj.get('name', f'device-{device_id}')
+                rack_id = device_obj.get('rack')
+                actual_rack = rack_lookup.get(rack_id) if rack_id else None
+            else:
+                device_name = getattr(device_obj, 'name', f'device-{device_id}')
+                rack_id = getattr(device_obj, 'rack', None)
+                actual_rack = rack_lookup.get(rack_id) if rack_id else None
             
             # CRITICAL CHECK: Only include devices that are ACTUALLY in the specified rack
             if actual_rack == rack_name:
@@ -392,23 +466,97 @@ def netbox_count_interfaces_in_rack(
         
         # DEFENSIVE VALIDATION: Verify devices are actually in the specified rack
         # This prevents the critical bug where API filters return wrong devices
+        # PERFORMANCE OPTIMIZATION: Batch fetch devices to avoid N+1 queries
+        
+        # Step 1: Extract unique device IDs from interfaces
+        device_ids = set()
+        for interface in all_interfaces:
+            device = interface.get('device') if isinstance(interface, dict) else interface.device
+            if isinstance(device, int):
+                device_ids.add(device)
+            elif isinstance(device, dict):
+                device_ids.add(device.get('id'))
+            else:
+                device_ids.add(getattr(device, 'id', None))
+        
+        # Remove None values if any
+        device_ids = {dev_id for dev_id in device_ids if dev_id is not None}
+        
+        # Step 2: BATCH FETCH all devices in a single API call
+        logger.debug(f"Batch fetching {len(device_ids)} devices to validate rack locations")
+        devices_batch = client.dcim.devices.filter(id__in=list(device_ids))
+        
+        # Step 2.5: Extract unique rack IDs and batch fetch racks
+        rack_ids = set()
+        for device in devices_batch:
+            if isinstance(device, dict):
+                rack_id = device.get('rack')
+                if rack_id:
+                    rack_ids.add(rack_id)
+            else:
+                rack_id = getattr(device, 'rack', None)
+                if rack_id:
+                    rack_ids.add(rack_id)
+        
+        # Batch fetch racks to get rack names
+        rack_lookup = {}
+        if rack_ids:
+            logger.debug(f"Batch fetching {len(rack_ids)} racks to get rack names")
+            racks_batch = client.dcim.racks.filter(id__in=list(rack_ids))
+            for rack in racks_batch:
+                if isinstance(rack, dict):
+                    rack_id = rack.get('id')
+                    rack_name = rack.get('name')
+                else:
+                    rack_id = getattr(rack, 'id', None)
+                    rack_name = getattr(rack, 'name', None)
+                if rack_id and rack_name:
+                    rack_lookup[rack_id] = rack_name
+        
+        # Step 3: Create device lookup map for O(1) access
+        device_lookup = {}
+        for device in devices_batch:
+            # Handle device being int ID, dict, or object
+            if isinstance(device, int):
+                device_id = device
+                device_lookup[device_id] = {'id': device}  # Minimal dict for consistency
+            elif isinstance(device, dict):
+                device_id = device.get('id')
+                device_lookup[device_id] = device
+            else:
+                device_id = getattr(device, 'id', None)
+                device_lookup[device_id] = device
+        
+        # Step 4: Process interfaces with batch-fetched device and rack data
         validated_interfaces = []
         skipped_devices = []
         
         for interface in all_interfaces:
             device = interface.get('device') if isinstance(interface, dict) else interface.device
             
-            # Handle device being int ID, dict, or object
+            # Extract device ID for lookup
             if isinstance(device, int):
-                device_obj = client.dcim.devices.get(device)
-                device_name = device_obj.get('name') if isinstance(device_obj, dict) else device_obj.name
-                actual_rack = device_obj.get('rack', {}).get('name') if isinstance(device_obj, dict) else (device_obj.rack.name if device_obj.rack else None)
+                device_id = device
             elif isinstance(device, dict):
-                device_name = device.get('name', f'device-{device.get("id", "unknown")}')
-                actual_rack = device.get('rack', {}).get('name') if device.get('rack') else None
+                device_id = device.get('id')
             else:
-                device_name = getattr(device, 'name', f'device-{getattr(device, "id", "unknown")}')
-                actual_rack = device.rack.name if device.rack else None
+                device_id = getattr(device, 'id', None)
+            
+            # Get device from batch lookup (O(1) operation)
+            device_obj = device_lookup.get(device_id)
+            if not device_obj:
+                logger.warning(f"Device ID {device_id} not found in batch fetch - skipping interface")
+                continue
+            
+            # Extract device name and rack with defensive handling
+            if isinstance(device_obj, dict):
+                device_name = device_obj.get('name', f'device-{device_id}')
+                rack_id = device_obj.get('rack')
+                actual_rack = rack_lookup.get(rack_id) if rack_id else None
+            else:
+                device_name = getattr(device_obj, 'name', f'device-{device_id}')
+                rack_id = getattr(device_obj, 'rack', None)
+                actual_rack = rack_lookup.get(rack_id) if rack_id else None
             
             # CRITICAL CHECK: Only include devices that are ACTUALLY in the specified rack
             if actual_rack == rack_name:
@@ -439,7 +587,7 @@ def netbox_count_interfaces_in_rack(
                 }
             }
         
-        # Process validated results
+        # Process validated results using batch-fetched device data
         available_count = 0
         unavailable_count = 0
         device_list = []
@@ -447,15 +595,20 @@ def netbox_count_interfaces_in_rack(
         for interface in validated_interfaces:
             device = interface.get('device') if isinstance(interface, dict) else interface.device
             
-            # Handle device being int ID, dict, or object
+            # Extract device ID for lookup
             if isinstance(device, int):
-                # Device is just an ID, need to fetch device name
-                device_obj = client.dcim.devices.get(device)
-                device_name = device_obj.get('name') if isinstance(device_obj, dict) else device_obj.name
+                device_id = device
             elif isinstance(device, dict):
-                device_name = device.get('name', f'device-{device.get("id", "unknown")}')
+                device_id = device.get('id')
             else:
-                device_name = getattr(device, 'name', f'device-{getattr(device, "id", "unknown")}')
+                device_id = getattr(device, 'id', None)
+            
+            # Get device from batch lookup (O(1) operation) - already fetched above
+            device_obj = device_lookup.get(device_id)
+            if device_obj:
+                device_name = device_obj.get('name') if isinstance(device_obj, dict) else getattr(device_obj, 'name', f'device-{device_id}')
+            else:
+                device_name = f'device-{device_id}'
             
             interface_cable = interface.get('cable') if isinstance(interface, dict) else interface.cable
             
