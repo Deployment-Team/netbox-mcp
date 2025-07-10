@@ -236,16 +236,18 @@ def netbox_get_device_info(
             "device": device
         }
         
-        # Get interfaces with pagination if requested
+        # Get interfaces with API-side pagination if requested
         if include_interfaces:
-            all_interfaces = list(client.dcim.interfaces.filter(device_id=device_id))
-            interfaces = all_interfaces[:interface_limit]
+            # Use API-side counting for efficiency
+            total_interfaces = client.dcim.interfaces.count(device_id=device_id)
+            # Use API-side pagination with limit parameter
+            interfaces = list(client.dcim.interfaces.filter(device_id=device_id, limit=interface_limit))
             result_data["interfaces"] = interfaces
             result_data["interface_pagination"] = {
-                "total_count": len(all_interfaces),
+                "total_count": total_interfaces,
                 "returned_count": len(interfaces),
                 "limit": interface_limit,
-                "truncated": len(all_interfaces) > interface_limit
+                "truncated": total_interfaces > interface_limit
             }
         else:
             result_data["interfaces"] = []
@@ -256,16 +258,18 @@ def netbox_get_device_info(
                 "truncated": False
             }
         
-        # Get cables with pagination if requested
+        # Get cables with API-side pagination if requested
         if include_cables:
-            all_cables = list(client.dcim.cables.filter(termination_a_id=device_id))
-            cables = all_cables[:cable_limit]
+            # Use API-side counting for efficiency
+            total_cables = client.dcim.cables.count(termination_a_id=device_id)
+            # Use API-side pagination with limit parameter
+            cables = list(client.dcim.cables.filter(termination_a_id=device_id, limit=cable_limit))
             result_data["cables"] = cables
             result_data["cable_pagination"] = {
-                "total_count": len(all_cables),
+                "total_count": total_cables,
                 "returned_count": len(cables),
                 "limit": cable_limit,
-                "truncated": len(all_cables) > cable_limit
+                "truncated": total_cables > cable_limit
             }
         else:
             result_data["cables"] = []
@@ -429,13 +433,17 @@ def netbox_get_device_interfaces(
         if enabled_only:
             interface_filter["enabled"] = True
         
-        # Get all interfaces matching filter
-        all_interfaces = list(client.dcim.interfaces.filter(**interface_filter))
+        # Use API-side counting and pagination for efficiency
+        total_count = client.dcim.interfaces.count(**interface_filter)
         
-        # Apply pagination
-        total_count = len(all_interfaces)
-        end_index = offset + limit
-        interfaces = all_interfaces[offset:end_index]
+        # Apply API-side pagination with limit and offset
+        interfaces = list(client.dcim.interfaces.filter(
+            **interface_filter,
+            limit=limit,
+            offset=offset
+        ))
+        
+        end_index = offset + len(interfaces)
         
         return {
             "success": True,
@@ -531,13 +539,17 @@ def netbox_get_device_cables(
         if cable_type:
             cable_filter["type"] = cable_type
         
-        # Get all cables matching filter
-        all_cables = list(client.dcim.cables.filter(**cable_filter))
+        # Use API-side counting and pagination for efficiency
+        total_count = client.dcim.cables.count(**cable_filter)
         
-        # Apply pagination
-        total_count = len(all_cables)
-        end_index = offset + limit
-        cables = all_cables[offset:end_index]
+        # Apply API-side pagination with limit and offset
+        cables = list(client.dcim.cables.filter(
+            **cable_filter,
+            limit=limit,
+            offset=offset
+        ))
+        
+        end_index = offset + len(cables)
         
         return {
             "success": True,
