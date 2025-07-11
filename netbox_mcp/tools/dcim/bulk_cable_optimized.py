@@ -121,7 +121,7 @@ def bulk_create_cables_resilient(cable_plan: List[dict], client) -> dict:
         "total_attempted": len(cable_plan),
         "total_success": len(success_results),
         "total_errors": len(error_results),
-        "success_rate": f"{len(success_results)}/{len(cable_plan)} ({len(success_results)/len(cable_plan)*100:.1f}%)"
+        "success_rate": f"{len(success_results)}/{len(cable_plan)} ({(len(success_results) / len(cable_plan) * 100) if len(cable_plan) > 0 else 0.0:.1f}%)"
     }
 
 
@@ -1086,6 +1086,7 @@ def netbox_count_switch_ports_available(
         
         for port in matching_ports:
             port_name = port.get('name') if isinstance(port, dict) else port.name
+            port_cable = port.get('cable') if isinstance(port, dict) else port.cable
             
             # GEMINI FIX: Use new robust port availability utility function
             is_available = is_port_available(port)

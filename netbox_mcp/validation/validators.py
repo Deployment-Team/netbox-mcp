@@ -85,7 +85,7 @@ class CableValidator:
         # Use enhanced color normalization
         normalized_color = cls.normalize_and_validate_color(color, cls.VALID_COLORS)
         
-        if color and not normalized_color:
+        if color is not None and not normalized_color:
             # Provide clear feedback with available options
             raise NetBoxValidationError(
                 f"Kleur '{color}' is niet valide. Geldige kleuren zijn: {', '.join(cls.VALID_COLORS)}"
