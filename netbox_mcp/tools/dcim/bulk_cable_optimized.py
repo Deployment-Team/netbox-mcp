@@ -321,7 +321,7 @@ def netbox_bulk_cable_interfaces_to_switch(
     if cable_color:
         import re
         if not (re.match(r'^[0-9a-fA-F]{6}$', cable_color) or cable_color.lower() in VALID_COLORS):
-            raise Exception(
+            raise ValueError(
                 f"Invalid cable_color '{cable_color}'. "
                 f"Please use a valid color name or a 6-digit hex code. "
                 f"Valid names are: {', '.join(VALID_COLORS)}"
@@ -385,10 +385,11 @@ def netbox_bulk_cable_interfaces_to_switch(
                 "message": f"No '{interface_name}' interfaces found in rack '{rack_name}'"
             }
         
-        # Get switch ports
+        # Get switch ports with real-time data
+        NO_CACHE = True
         switch_ports = client.dcim.interfaces.filter(
             device__name=switch_name,
-            no_cache=True
+            no_cache=NO_CACHE
         )
         
         # Filter ports by pattern and availability
@@ -435,9 +436,10 @@ def netbox_bulk_cable_interfaces_to_switch(
             switch_port = available_ports[i]
             
             device = rack_interface.device
-            # FIX: Correctly handle device name resolution to prevent AttributeError
-            device_obj = client.dcim.devices.get(device.id if hasattr(device, 'id') else device)
-            device_name = device_obj.name if device_obj else f"device-id-{device.id if hasattr(device, 'id') else device}"
+            # OPTIMIZED: Use pre-fetched device lookup to avoid N+1 queries
+            device_id = device.id if hasattr(device, 'id') else device
+            device_obj = device_lookup.get(device_id)
+            device_name = device_obj.name if device_obj else f"device-id-{device_id}"
             
             switch_port_name = switch_port.get('name') if isinstance(switch_port, dict) else switch_port.name
             interface_name_actual = rack_interface.get('name') if isinstance(rack_interface, dict) else rack_interface.name
@@ -826,10 +828,11 @@ def netbox_count_switch_ports_available(
     try:
         logger.info(f"Counting available switch ports on '{switch_name}' matching '{port_pattern}'")
         
-        # GEMINI FIX: Use no_cache=True to prevent stale port availability data
+        # GEMINI FIX: Use real-time data to prevent stale port availability
+        NO_CACHE = True
         all_device_ports = client.dcim.interfaces.filter(
             device__name=switch_name,
-            no_cache=True
+            no_cache=NO_CACHE
         )
         
         # Filter manually for exact pattern matching (prevents overcounting)
@@ -912,6 +915,28 @@ def netbox_count_switch_ports_available(
             "error_type": type(e).__name__
         }
 
+
+@mcp_tool(category="dcim")
+def netbox_bulk_cable_lom1_to_switch_optimized(
+    client: NetBoxClient,
+    rack_name: str,
+    switch_name: str,
+    interface_name: str = "lom1",
+    switch_port_pattern: str = "Te1/1/",
+    cable_color: Optional[str] = None,
+    cable_type: str = "cat6",
+    confirm: bool = False
+) -> Dict[str, Any]:
+    """
+    GEMINI OPTIMIZED: Highly optimized bulk cable creation avoiding N+1 queries.
+    
+    This function has been optimized to eliminate redundant API calls and
+    improve performance for large-scale bulk cable operations.
+    """
+    
+    # Constants for better readability
+    NO_CACHE = True
+    
     def natural_sort_key(interface_name):
         """Create a natural sort key for interface names."""
         import re
@@ -974,9 +999,11 @@ def netbox_count_switch_ports_available(
         if not rack_interfaces:
             return {"success": False, "error": f"No available '{interface_name}' interfaces found in rack '{rack_name}'", "error_type": "NotFoundError"}
         
+        # Use real-time data to prevent stale cache issues
+        NO_CACHE = True
         all_device_ports = client.dcim.interfaces.filter(
             device__name=switch_name,
-            no_cache=True
+            no_cache=NO_CACHE
         )
         
         switch_ports = [
@@ -1413,10 +1440,11 @@ def netbox_count_switch_ports_available(
     try:
         logger.info(f"Counting available switch ports on '{switch_name}' matching '{port_pattern}'")
         
-        # GEMINI FIX: Use no_cache=True to prevent stale port availability data
+        # GEMINI FIX: Use real-time data to prevent stale port availability
+        NO_CACHE = True
         all_device_ports = client.dcim.interfaces.filter(
             device__name=switch_name,
-            no_cache=True
+            no_cache=NO_CACHE
         )
         
         # Filter manually for exact pattern matching (prevents overcounting)
