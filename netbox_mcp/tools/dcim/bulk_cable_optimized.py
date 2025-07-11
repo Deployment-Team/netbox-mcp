@@ -64,7 +64,7 @@ def get_resource_details(resource, client, device_lookup=None):
             logger.warning(f"Fallback API call for resource ID {resource} - consider adding to batch lookup")
             try:
                 res_obj = client.dcim.devices.get(resource)
-                return res_obj.id, res_obj.name if res_obj else (resource, "Unknown")
+                return (res_obj.id, res_obj.name) if res_obj else (resource, "Unknown")
             except Exception as e:
                 logger.error(f"Failed to fetch resource {resource}: {e}")
                 return resource, "Unknown"
