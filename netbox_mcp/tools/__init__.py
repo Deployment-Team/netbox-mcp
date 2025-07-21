@@ -35,12 +35,12 @@ def load_all_tools() -> List[str]:
     
     # Define the domain packages to load
     domain_packages = [
-        'system',
-        #'dcim', 
-        'ipam',
-        'tenancy',
-        'extras',
-        'virtualization',
+        #'system',
+        'dcim', 
+        #'ipam',
+        #'tenancy',
+        #'extras',
+        #'virtualization',
     ]
     
     for domain in domain_packages:
