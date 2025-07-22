@@ -39,7 +39,7 @@ class SafetyConfig:
     
     # Global safety controls
     dry_run_mode: bool = False              # Global dry-run mode
-    require_confirmation: bool = True       # Require confirm=True for write ops
+    require_confirmation: bool = False       # Require confirm=True for write ops
     enable_write_operations: bool = True    # Master switch for all write ops
     
     # Operation timeouts and limits
