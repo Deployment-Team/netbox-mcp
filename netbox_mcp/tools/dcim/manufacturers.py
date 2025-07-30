@@ -90,7 +90,6 @@ def netbox_list_all_manufacturers(
 
     Args:
         client: NetBoxClient instance (injected by dependency system)
-        limit: Maximum number of results to return (default: 100)
 
     Returns:
         Dictionary containing:
@@ -101,7 +100,6 @@ def netbox_list_all_manufacturers(
     try:
         logger.info(f"Listing manufacturers with limit: {limit}")
 
-        # ดึง manufacturers ทั้งหมด (หรือตาม limit)
         manufacturers = list(client.dcim.manufacturers.all())
         if len(manufacturers) > limit:
             manufacturers = manufacturers[:limit]
@@ -112,9 +110,7 @@ def netbox_list_all_manufacturers(
         manufacturer_list = []
 
         for manufacturer in manufacturers:
-            # ใช้ข้อมูล devicetype_count จาก API response โดยตรง
             device_type_count = manufacturer.get("devicetype_count", 0)
-            # บาง API มีฟิลด์ inventoryitem_count = จำนวน devices
             device_count = manufacturer.get("inventoryitem_count", 0)
 
             total_device_types += device_type_count
@@ -134,7 +130,6 @@ def netbox_list_all_manufacturers(
             }
             manufacturer_list.append(manufacturer_info)
 
-        # เรียงลำดับตามจำนวน devices จากมากไปน้อย
         manufacturer_list.sort(key=lambda m: m['device_count'], reverse=True)
 
         result = {
